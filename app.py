@@ -42,12 +42,12 @@ llm_provider = st.sidebar.radio(
 # Model configurations
 OPENROUTER_MODELS = {
     "Free Models": {
-        "google/gemini-2.0-flash-exp:free": "Gemini 2.0 Flash (Free)",
-        "meta-llama/llama-3.1-405b-instruct:free": "Llama 3.1 405B (Free)",
+        "mistralai/mistral-7b-instruct:free": "Mistral 7B (Free)",
+        "nousresearch/nous-capybara-7b:free": "Nous Capybara 7B (Free)",
     },
     "Paid Models": {
         "anthropic/claude-3-sonnet": "Claude 3 Sonnet",
-        "anthropic/claude-3-haiku": "Claude 3 Haiku",
+        "mistralai/mistral-medium": "Mistral Medium",
         "meta-llama/llama-2-70b-chat": "Llama 2 70B",
     }
 }
@@ -68,6 +68,14 @@ ANTHROPIC_MODELS = {
 # API Key and Model Selection
 if llm_provider == "OpenRouter (Free & Paid Models)":
     st.sidebar.subheader("OpenRouter Configuration")
+    st.sidebar.markdown("""
+    🆓 Free models are available without an API key, but may have:
+    - Longer response times
+    - Rate limits
+    - Lower quality results
+    
+    For better performance, get an API key at [OpenRouter](https://openrouter.ai/keys)
+    """)
     # Use secrets if available, otherwise use text input
     default_openrouter_key = os.getenv('OPENROUTER_API_KEY', '')  # First check environment variable
     if not default_openrouter_key and hasattr(st.secrets, "openrouter_api_key"):
@@ -289,74 +297,55 @@ class APIClient:
     def _get_openrouter_completion(self, content: str, model: str) -> str:
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "HTTP-Referer": "http://localhost:8501",
+            "HTTP-Referer": "https://rss-analyzer-mock.streamlit.app",  # Update this
             "X-Title": "RSS Feed Analyzer",
             "Content-Type": "application/json",
         }
         
-        # Try models in order if primary model fails
-        models_to_try = [model]
-        if model == "google/gemini-2.0-flash-exp:free":
-            models_to_try.append("meta-llama/llama-3.1-405b-instruct:free")  # Fallback model
-        
-        last_error = None
-        for current_model in models_to_try:
-            try:
-                data = {
-                    "model": current_model,
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "You are an expert news analyst and pattern recognition specialist."
-                        },
-                        {
-                            "role": "user",
-                            "content": content
-                        }
-                    ]
+        data = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are an expert news analyst and pattern recognition specialist."
+                },
+                {
+                    "role": "user",
+                    "content": content
                 }
-                
-                st.info(f"Attempting request with model: {current_model}")
-                
-                response = requests.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers=headers,
-                    json=data,
-                    timeout=120
-                )
-                
-                response_json = response.json()
-                
-                # Show response in expander for debugging
-                with st.expander("Debug: API Response", expanded=False):
-                    st.json(response_json)
-                
-                if "error" in response_json:
-                    error_msg = response_json["error"].get("message", "Unknown error")
-                    if "quota exceeded" in error_msg.lower() or "429" in str(response_json):
-                        st.warning(f"Rate limit hit for {current_model}, trying next model if available...")
-                        last_error = error_msg
-                        sleep(RETRY_DELAY)  # Wait before trying next model
-                        continue
-                    else:
-                        raise Exception(f"OpenRouter API Error: {error_msg}")
-                
-                if "choices" in response_json:
-                    return response_json["choices"][0]["message"]["content"]
-                elif "generations" in response_json:
-                    return response_json["generations"][0]["text"]
-                elif "content" in response_json:
-                    return response_json["content"]
-                
-            except Exception as e:
-                last_error = str(e)
-                if current_model == models_to_try[-1]:  # If this was the last model to try
-                    raise Exception(f"All models failed. Last error: {last_error}")
-                st.warning(f"Model {current_model} failed, trying next model...")
-                sleep(RETRY_DELAY)
-                continue
+            ],
+            "max_tokens": 1500,
+            "temperature": 0.1,
+        }
         
-        raise Exception(f"No models available. Last error: {last_error}")
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=data,
+                timeout=180  # Increased timeout
+            )
+            
+            response_json = response.json()
+            
+            # Show response in expander for debugging
+            with st.expander("Debug: API Response", expanded=False):
+                st.json(response_json)
+            
+            if "error" in response_json:
+                error_msg = response_json["error"].get("message", "Unknown error")
+                raise Exception(f"OpenRouter API Error: {error_msg}")
+            
+            if "choices" in response_json and len(response_json["choices"]) > 0:
+                return response_json["choices"][0]["message"]["content"]
+            else:
+                raise Exception("No valid response content found")
+                
+        except Exception as e:
+            st.error(f"Error with model {model}: {str(e)}")
+            if not self.api_key and "authentication" in str(e).lower():
+                st.warning("⚠️ You may need an API key for better performance. Get one at https://openrouter.ai/keys")
+            raise e
 
     def _get_anthropic_completion(self, content: str, model: str) -> str:
         message = self.client.messages.create(
