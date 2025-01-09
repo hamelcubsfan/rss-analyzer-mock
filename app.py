@@ -39,16 +39,10 @@ llm_provider = st.sidebar.radio(
     help="Choose between OpenRouter's various models (including free options) or Anthropic's Claude"
 )
 
-# Model configurations
+# Simplify Model configurations
 OPENROUTER_MODELS = {
     "Free Models": {
-        "mistralai/mistral-7b-instruct:free": "Mistral 7B (Free)",
-        "nousresearch/nous-capybara-7b:free": "Nous Capybara 7B (Free)",
-    },
-    "Paid Models": {
-        "anthropic/claude-3-sonnet": "Claude 3 Sonnet",
-        "mistralai/mistral-medium": "Mistral Medium",
-        "meta-llama/llama-2-70b-chat": "Llama 2 70B",
+        "google/gemini-2.0-flash-exp:free": "Gemini 2.0 Flash (Free)",
     }
 }
 
@@ -69,33 +63,17 @@ ANTHROPIC_MODELS = {
 if llm_provider == "OpenRouter (Free & Paid Models)":
     st.sidebar.subheader("OpenRouter Configuration")
     st.sidebar.markdown("""
-    🆓 Free models are available without an API key, but may have:
-    - Longer response times
-    - Rate limits
-    - Lower quality results
+    🆓 Using Google's Gemini 2.0 Flash model (Free)
+    - No API key required
+    - May have longer response times
+    - Rate limits may apply
     
-    For better performance, get an API key at [OpenRouter](https://openrouter.ai/keys)
+    For better performance with paid models, get an API key at [OpenRouter](https://openrouter.ai/keys)
     """)
-    # Use secrets if available, otherwise use text input
-    default_openrouter_key = os.getenv('OPENROUTER_API_KEY', '')  # First check environment variable
-    if not default_openrouter_key and hasattr(st.secrets, "openrouter_api_key"):
-        default_openrouter_key = st.secrets.openrouter_api_key
-    openrouter_api_key = st.sidebar.text_input(
-        "OpenRouter API Key (optional for free models):",
-        value=default_openrouter_key,
-        type="password",
-        help="Get your API key at https://openrouter.ai/keys"
-    )
     
-    model_category = st.sidebar.radio("Model Category", ["Free Models", "Paid Models"])
-    selected_model = st.sidebar.selectbox(
-        "Select Model",
-        options=list(OPENROUTER_MODELS[model_category].keys()),
-        format_func=lambda x: OPENROUTER_MODELS[model_category][x]
-    )
-    
-    if model_category == "Paid Models" and not openrouter_api_key:
-        st.sidebar.warning("⚠️ API key required for paid models")
+    # Always set to free model
+    model_category = "Free Models"
+    selected_model = "google/gemini-2.0-flash-exp:free"
 elif llm_provider == "Anthropic (Claude)":
     st.sidebar.subheader("Anthropic Configuration")
     # Use secrets if available, otherwise use text input
@@ -296,14 +274,14 @@ class APIClient:
     
     def _get_openrouter_completion(self, content: str, model: str) -> str:
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "HTTP-Referer": "https://rss-analyzer-mock.streamlit.app",  # Update this
+            "Authorization": f"Bearer {self.api_key}" if self.api_key else "",
+            "HTTP-Referer": "https://rss-analyzer-mock.streamlit.app",
             "X-Title": "RSS Feed Analyzer",
             "Content-Type": "application/json",
         }
         
         data = {
-            "model": model,
+            "model": "google/gemini-2.0-flash-exp:free",  # Always use Gemini
             "messages": [
                 {
                     "role": "system",
@@ -313,9 +291,7 @@ class APIClient:
                     "role": "user",
                     "content": content
                 }
-            ],
-            "max_tokens": 1500,
-            "temperature": 0.1,
+            ]
         }
         
         try:
@@ -323,17 +299,18 @@ class APIClient:
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json=data,
-                timeout=180  # Increased timeout
+                timeout=180
             )
             
             response_json = response.json()
             
-            # Show response in expander for debugging
             with st.expander("Debug: API Response", expanded=False):
                 st.json(response_json)
             
             if "error" in response_json:
                 error_msg = response_json["error"].get("message", "Unknown error")
+                if "quota exceeded" in error_msg.lower() or "429" in str(response_json):
+                    st.warning("Rate limit reached. Please try again in a few minutes.")
                 raise Exception(f"OpenRouter API Error: {error_msg}")
             
             if "choices" in response_json and len(response_json["choices"]) > 0:
@@ -342,9 +319,7 @@ class APIClient:
                 raise Exception("No valid response content found")
                 
         except Exception as e:
-            st.error(f"Error with model {model}: {str(e)}")
-            if not self.api_key and "authentication" in str(e).lower():
-                st.warning("⚠️ You may need an API key for better performance. Get one at https://openrouter.ai/keys")
+            st.error(f"Error with Gemini model: {str(e)}")
             raise e
 
     def _get_anthropic_completion(self, content: str, model: str) -> str:
