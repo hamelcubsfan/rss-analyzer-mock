@@ -257,19 +257,12 @@ class APIClient:
             self.client = anthropic.Anthropic(api_key=api_key)
     
     def get_completion(self, content: str, model: str) -> str:
-        if not self.api_key:
-            raise ValueError("API key is required")
-            
-        for attempt in range(MAX_RETRIES):
-            try:
-                if self.provider == "openrouter":
-                    return self._get_openrouter_completion(content, model)
-                else:  # anthropic
-                    return self._get_anthropic_completion(content, model)
-            except Exception as e:
-                if attempt == MAX_RETRIES - 1:
-                    raise e
-                sleep(RETRY_DELAY)
+        if self.provider == "openrouter":
+            return self._get_openrouter_completion(content, model)
+        else:  # anthropic
+            if not self.api_key:
+                raise ValueError("API key is required for Anthropic")
+            return self._get_anthropic_completion(content, model)
     
     def _get_openrouter_completion(self, content: str, model: str) -> str:
         headers = {
@@ -352,18 +345,13 @@ def initialize_session_state():
         provider = st.session_state.get('llm_provider')
         
         if provider == "OpenRouter (Free & Paid Models)":
-            api_key = st.session_state.get('openrouter_api_key', '')
-            if not api_key and st.session_state.get('selected_model') in OPENROUTER_MODELS["Paid Models"]:
-                raise ValueError("OpenRouter API key is required for paid models")
+            # Always use empty string for API key with free model
+            api_key = ""
         elif provider == "Anthropic (Claude)":
             api_key = st.session_state.get('anthropic_api_key', '')
             if not api_key:
                 raise ValueError("Anthropic API key is required")
         
-        # Verify API key is not empty
-        if not api_key:
-            raise ValueError(f"API key is required for {provider}")
-            
         st.session_state.api_client = APIClient(
             api_key=api_key,
             provider='openrouter' if provider == "OpenRouter (Free & Paid Models)"
