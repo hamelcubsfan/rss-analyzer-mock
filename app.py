@@ -67,13 +67,12 @@ if llm_provider == "OpenRouter (Free & Paid Models)":
     - No API key required
     - May have longer response times
     - Rate limits may apply
-    
-    For better performance with paid models, get an API key at [OpenRouter](https://openrouter.ai/keys)
     """)
     
-    # Always set to free model
+    # Set default values for OpenRouter
     model_category = "Free Models"
     selected_model = "google/gemini-2.0-flash-exp:free"
+    openrouter_api_key = ""  # No API key needed for free model
 elif llm_provider == "Anthropic (Claude)":
     st.sidebar.subheader("Anthropic Configuration")
     # Use secrets if available, otherwise use text input
@@ -459,9 +458,9 @@ def main():
     # Store API keys and provider in session state
     st.session_state['llm_provider'] = llm_provider
     if llm_provider == "OpenRouter (Free & Paid Models)":
-        st.session_state['openrouter_api_key'] = openrouter_api_key
-        st.session_state['selected_model'] = selected_model
-        st.session_state['model_category'] = model_category
+        st.session_state['selected_model'] = "google/gemini-2.0-flash-exp:free"
+        st.session_state['model_category'] = "Free Models"
+        st.session_state['openrouter_api_key'] = ""  # No API key needed for free model
     else:
         st.session_state['anthropic_api_key'] = anthropic_api_key
         st.session_state['selected_model'] = selected_model
