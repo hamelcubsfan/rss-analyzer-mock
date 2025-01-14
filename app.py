@@ -1,6 +1,5 @@
 import streamlit as st
 import feedparser
-import anthropic
 import os
 from datetime import datetime, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -11,6 +10,7 @@ from typing import List, Dict, Any
 from functools import lru_cache
 from time import sleep
 import streamlit.components.v1 as components
+import google.generativeai as genai  # Add this import at the top
 
 # Constants
 CACHE_TTL = 300  # 5 minutes cache for feed data
@@ -32,64 +32,22 @@ st.write("Discover insights across multiple RSS feeds using AI-powered analysis"
 # Sidebar title
 st.sidebar.header("⚙️ Configuration")
 
-# LLM Provider Selection
-llm_provider = st.sidebar.radio(
-    "Select LLM Provider",
-    options=["OpenRouter (Free & Paid Models)", "Anthropic (Claude)"],
-    help="Choose between OpenRouter's various models (including free options) or Anthropic's Claude"
-)
+# Set up Gemini API key from secrets
+if hasattr(st.secrets, "gemini_api_key"):
+    genai.configure(api_key=st.secrets.gemini_api_key)
+else:
+    st.error("Gemini API key not found in secrets. Please add it to your secrets.toml file.")
+    st.stop()
 
-# Simplify Model configurations
-OPENROUTER_MODELS = {
-    "Free Models": {
-        "google/gemini-2.0-flash-exp:free": "Gemini 2.0 Flash (Free)",
-    }
-}
+# Simplify model selection - only show Gemini
+st.sidebar.markdown("""
+🤖 Using Google's Gemini 2.0 Flash model
+- Provides fast, high-quality responses
+- Optimized for analysis tasks
+""")
 
-ANTHROPIC_MODELS = {
-    # Current models
-    "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet (Latest)",
-    "claude-3-5-haiku-20241022": "Claude 3.5 Haiku (Latest)",
-    "claude-3-opus-20240229": "Claude 3 Opus",
-    "claude-3-sonnet-20240229": "Claude 3 Sonnet",
-    "claude-3-haiku-20240307": "Claude 3 Haiku",
-    # Legacy models
-    "claude-2.1": "Claude 2.1 (Legacy)",
-    "claude-2.0": "Claude 2.0 (Legacy)",
-    "claude-instant-1.2": "Claude Instant 1.2 (Legacy)"
-}
-
-# API Key and Model Selection
-if llm_provider == "OpenRouter (Free & Paid Models)":
-    st.sidebar.subheader("OpenRouter Configuration")
-    st.sidebar.markdown("""
-    🆓 Using Google's Gemini 2.0 Flash model (Free)
-    - No API key required
-    - May have longer response times
-    - Rate limits may apply
-    """)
-    
-    # Set default values for OpenRouter
-    model_category = "Free Models"
-    selected_model = "google/gemini-2.0-flash-exp:free"
-    openrouter_api_key = ""  # No API key needed for free model
-elif llm_provider == "Anthropic (Claude)":
-    st.sidebar.subheader("Anthropic Configuration")
-    # Use secrets if available, otherwise use text input
-    default_anthropic_key = os.getenv('ANTHROPIC_API_KEY', '')  # First check environment variable
-    if not default_anthropic_key and hasattr(st.secrets, "anthropic_api_key"):
-        default_anthropic_key = st.secrets.anthropic_api_key
-    anthropic_api_key = st.sidebar.text_input(
-        "Anthropic API Key:",
-        value=default_anthropic_key,
-        type="password",
-        help="Get your API key at https://console.anthropic.com/settings/keys"
-    )
-    selected_model = st.sidebar.selectbox(
-        "Select Model",
-        options=list(ANTHROPIC_MODELS.keys()),
-        format_func=lambda x: ANTHROPIC_MODELS[x]
-    )
+# Remove the old model selection code and replace with:
+selected_model = "gemini-2.0-flash-exp"
 
 # Default prompt
 DEFAULT_PROMPT = """Analyze {feed_count} RSS news feeds and deliver a comprehensive report focusing on talent movement, leadership changes, layoffs, and related announcements. Structure your analysis as follows:
@@ -250,142 +208,32 @@ def extract_content(entries: List[Dict[str, Any]], max_entries: int = 10) -> str
     )
 
 class APIClient:
-    def __init__(self, api_key: str, provider: str):
-        self.api_key = api_key
-        self.provider = provider
-        if provider == "anthropic":
-            self.client = anthropic.Anthropic(api_key=api_key)
+    def __init__(self):
+        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
     
     def get_completion(self, content: str, model: str) -> str:
-        if self.provider == "openrouter":
-            return self._get_openrouter_completion(content, model)
-        else:  # anthropic
-            if not self.api_key:
-                raise ValueError("API key is required for Anthropic")
-            return self._get_anthropic_completion(content, model)
-    
-    def _get_openrouter_completion(self, content: str, model: str) -> str:
-        headers = {
-            "Authorization": f"Bearer {self.api_key}" if self.api_key else "",
-            "HTTP-Referer": "https://rss-analyzer-mock.streamlit.app",
-            "X-Title": "RSS Feed Analyzer",
-            "Content-Type": "application/json",
-        }
-        
-        data = {
-            "model": "google/gemini-2.0-flash-exp:free",  # Always use Gemini
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are an expert news analyst and pattern recognition specialist."
-                },
-                {
-                    "role": "user",
-                    "content": content
-                }
-            ]
-        }
-        
         try:
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json=data,
-                timeout=180
-            )
-            
-            response_json = response.json()
-            
-            with st.expander("Debug: API Response", expanded=False):
-                st.json(response_json)
-            
-            if "error" in response_json:
-                error_msg = response_json["error"].get("message", "Unknown error")
-                if "quota exceeded" in error_msg.lower() or "429" in str(response_json):
-                    st.warning("Rate limit reached. Please try again in a few minutes.")
-                raise Exception(f"OpenRouter API Error: {error_msg}")
-            
-            if "choices" in response_json and len(response_json["choices"]) > 0:
-                return response_json["choices"][0]["message"]["content"]
-            else:
-                raise Exception("No valid response content found")
-                
+            response = self.model.generate_content(content)
+            return response.text
         except Exception as e:
-            st.error(f"Error with Gemini model: {str(e)}")
-            raise e
-
-    def _get_anthropic_completion(self, content: str, model: str) -> str:
-        message = self.client.messages.create(
-            model=model,
-            max_tokens=1500,
-            temperature=0,
-            system="You are an expert news analyst and pattern recognition specialist tasked with analyzing multiple RSS feeds to identify themes, patterns, and significant stories across different sources.",
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": content
-                        }
-                    ]
-                }
-            ]
-        )
-        return message.content[0].text
+            raise Exception(f"Error with Gemini model: {str(e)}")
 
 def initialize_session_state():
-    # Initialize provider selection if not already set
-    if 'llm_provider' not in st.session_state:
-        st.session_state['llm_provider'] = "OpenRouter (Free & Paid Models)"
-    
-    # Only create API client when needed (during analysis)
+    # Simplify session state initialization
     if 'api_client' not in st.session_state and st.session_state.get('_run_analysis', False):
-        api_key = ''
-        provider = st.session_state.get('llm_provider')
-        
-        if provider == "OpenRouter (Free & Paid Models)":
-            # Always use empty string for API key with free model
-            api_key = ""
-        elif provider == "Anthropic (Claude)":
-            api_key = st.session_state.get('anthropic_api_key', '')
-            if not api_key:
-                raise ValueError("Anthropic API key is required")
-        
-        st.session_state.api_client = APIClient(
-            api_key=api_key,
-            provider='openrouter' if provider == "OpenRouter (Free & Paid Models)"
-                    else 'anthropic'
-        )
+        st.session_state.api_client = APIClient()
 
-# Functions
 def generate_summary(content, feed_count, prompt_template):
     formatted_prompt = prompt_template.format(feed_count=feed_count)
     try:
         initialize_session_state()
-        provider = st.session_state.get('llm_provider')
-        
-        if provider == "OpenRouter (Free & Paid Models)":
-            model_name = st.session_state.get('selected_model')
-            model_category = st.session_state.get('model_category', 'Free Models')
-            if not model_name or model_name not in OPENROUTER_MODELS[model_category]:
-                st.error(f"Please select a valid model from {model_category}")
-                raise ValueError("No valid model selected")
-        else:  # Anthropic (Claude)
-            model_name = st.session_state.get('selected_model')
-            if not model_name or model_name not in ANTHROPIC_MODELS:
-                st.error("Please select a valid Anthropic model")
-                raise ValueError("No valid model selected")
-            
-        if not model_name:
-            raise ValueError("No model selected")
         
         # Ensure content is properly encoded
         cleaned_content = _clean_text(content)
         
         summary = st.session_state.api_client.get_completion(
             content=f"{formatted_prompt}\n\nContent to analyze:\n{cleaned_content}",
-            model=model_name
+            model="gemini-2.0-flash-exp"  # Use the model directly
         )
         
         # Save the summary
@@ -397,7 +245,7 @@ def generate_summary(content, feed_count, prompt_template):
             json.dump({
                 'timestamp': timestamp.isoformat(),
                 'summary': summary,
-                'model_used': model_name
+                'model_used': selected_model
             }, f, ensure_ascii=False)
             
         return summary
@@ -443,16 +291,10 @@ scheduler = BackgroundScheduler(timezone=pytz.UTC)
 
 # Main app logic
 def main():
-    # Store API keys and provider in session state
-    st.session_state['llm_provider'] = llm_provider
-    if llm_provider == "OpenRouter (Free & Paid Models)":
-        st.session_state['selected_model'] = "google/gemini-2.0-flash-exp:free"
-        st.session_state['model_category'] = "Free Models"
-        st.session_state['openrouter_api_key'] = ""  # No API key needed for free model
-    else:
-        st.session_state['anthropic_api_key'] = anthropic_api_key
-        st.session_state['selected_model'] = selected_model
-        st.session_state['model_category'] = None
+    global rss_feeds, max_entries  # Add this line to fix the reference error
+    
+    # Remove provider-specific initialization
+    st.session_state['selected_model'] = "gemini-2.0-flash-exp"
 
     # RSS Feeds input
     st.header("RSS Feed Configuration")
