@@ -47,19 +47,19 @@ st.sidebar.markdown("""
 """)
 
 # Remove the old model selection code and replace with:
-selected_model = "gemini-2.0-flash-exp"
+selected_model = "gemini-2.0-flash-thinking-exp"
 
 # Default prompt
-DEFAULT_PROMPT = """Analyze {feed_count} RSS news feeds and deliver a comprehensive report focusing on talent movement, leadership changes, layoffs, and related announcements. Structure your analysis as follows:
+DEFAULT_PROMPT = """Analyze {feed_count} RSS news feeds and deliver a comprehensive report focusing on talent movement, leadership changes, layoffs, and related announcements. Structure your analysis [...]
 
 TOP MAJOR TALENT MOVEMENT STORIES:
 
-List up to the top 3 major talent movement stories across all feeds. If more than 3 major stories are identified, list the top 3 and acknowledge the existence of additional significant stories. If fewer than 3 major stories are identified, include only the available ones without fabricating additional stories.
+List up to the top 3 major talent movement stories across all feeds. If more than 3 major stories are identified, list the top 3 and acknowledge the existence of additional significant stories. If few[...]
 
 For each major story:
 1. Headline & Core Facts
    - Primary Headline/Topic: Clearly state the main headline or topic of the story.
-   - Key Facts and Developments: Summarize the essential details, including who is involved (names and titles), what changes are occurring, specific roles or departments affected, and any relevant timelines or numbers.
+   - Key Facts and Developments: Summarize the essential details, including who is involved (names and titles), what changes are occurring, specific roles or departments affected, and any relevant tim[...]
    - Number of Sources Covering This Story: Indicate how many of the analyzed feeds report on this story.
 
 2. Coverage Analysis
@@ -209,7 +209,7 @@ def extract_content(entries: List[Dict[str, Any]], max_entries: int = 10) -> str
 
 class APIClient:
     def __init__(self):
-        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        self.model = genai.GenerativeModel('gemini-2.0-flash-thinking-exp')
     
     def get_completion(self, content: str, model: str) -> str:
         try:
@@ -233,7 +233,7 @@ def generate_summary(content, feed_count, prompt_template):
         
         summary = st.session_state.api_client.get_completion(
             content=f"{formatted_prompt}\n\nContent to analyze:\n{cleaned_content}",
-            model="gemini-2.0-flash-exp"  # Use the model directly
+            model="gemini-2.0-flash-thinking-exp"  # Use the model directly
         )
         
         # Save the summary
@@ -294,7 +294,7 @@ def main():
     global rss_feeds, max_entries  # Add this line to fix the reference error
     
     # Remove provider-specific initialization
-    st.session_state['selected_model'] = "gemini-2.0-flash-exp"
+    st.session_state['selected_model'] = "gemini-2.0-flash-thinking-exp"
 
     # RSS Feeds input
     st.header("RSS Feed Configuration")
