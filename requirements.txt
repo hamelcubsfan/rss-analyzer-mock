@@ -1,6 +1,7 @@
-streamlit==1.32.0
-feedparser==6.0.11
-google-generativeai==0.3.2
-pytz==2024.1
-APScheduler==3.10.4
-requests==2.31.0
+streamlit
+feedparser
+google-generativeai
+pytz
+apscheduler
+requests
+fpdf

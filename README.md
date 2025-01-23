@@ -1,6 +1,6 @@
 # RSS Feed Analyzer
 
-AI-powered RSS feed analyzer that provides insights across multiple news sources.
+AI-powered RSS feed analyzer with chat capabilities using Google's Gemini model.
 
 ## Setup
 

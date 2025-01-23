@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Streamlit
+.streamlit/secrets.toml
+.streamlit/config.toml
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Analysis history
+analysis_history/
+
+# OS files
+.DS_Store
