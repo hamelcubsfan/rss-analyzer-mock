@@ -11,6 +11,9 @@ from functools import lru_cache
 from time import sleep
 import streamlit.components.v1 as components
 import google.generativeai as genai  # Add this import at the top
+import base64
+import tempfile
+from fpdf import FPDF
 
 # Constants
 CACHE_TTL = 300  # 5 minutes cache for feed data
@@ -330,9 +333,14 @@ https://www.wired.com/feed/tag/ai/latest/rss"""
         help="Higher values provide more comprehensive analysis but take longer to process"
     )
 
+    # Change tabs definition from 3 to 2
     tab1, tab2 = st.tabs(["Current Analysis", "Analysis History"])
     
     with tab1:
+        # Store analysis result in session state to persist it
+        if 'current_analysis' not in st.session_state:
+            st.session_state.current_analysis = None
+
         if st.button("Run Cross-Feed Analysis"):
             try:
                 st.session_state['_run_analysis'] = True
@@ -348,11 +356,39 @@ https://www.wired.com/feed/tag/ai/latest/rss"""
                 content = extract_content(entries, max_entries)
                 st.write(f"Content extracted from {feed_count} feeds successfully.")
                 
+                timestamp = datetime.now()  # Move timestamp definition here, before it's used
+                
                 summary = generate_summary(content, feed_count, user_prompt)
+                st.session_state.current_analysis = summary  # Store in session state
+                
                 st.subheader("Cross-Feed Analysis:")
                 st.write(summary)
                 
-                timestamp = datetime.now()
+                # Add download buttons in a smaller container
+                st.write("📥 Download Analysis:")
+                download_col1, download_col2, download_col3 = st.columns([1, 1, 2])
+                
+                with download_col1:
+                    txt_content = f"Analysis Generated at: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n\n{summary}"
+                    b64_txt = base64.b64encode(txt_content.encode()).decode()
+                    href_txt = f'<a href="data:text/plain;base64,{b64_txt}" download="analysis_{timestamp.strftime("%Y%m%d_%H%M%S")}.txt">Download as TXT</a>'
+                    st.markdown(href_txt, unsafe_allow_html=True)
+                
+                with download_col2:
+                    pdf = FPDF()
+                    pdf.add_page()
+                    pdf.set_font("Arial", size=12)
+                    pdf.multi_cell(0, 10, txt=txt_content)
+                    
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                        pdf.output(tmp_file.name)
+                        with open(tmp_file.name, "rb") as f:
+                            b64_pdf = base64.b64encode(f.read()).decode()
+                        os.unlink(tmp_file.name)
+                    
+                    href_pdf = f'<a href="data:application/pdf;base64,{b64_pdf}" download="analysis_{timestamp.strftime("%Y%m%d_%H%M%S")}.pdf">Download as PDF</a>'
+                    st.markdown(href_pdf, unsafe_allow_html=True)
+                
                 save_analysis_result(summary, timestamp)
                 st.caption(f"Analysis generated at: {timestamp.strftime('%Y%m-%d %H:%M:%S')} using {selected_model}")
                 
@@ -362,7 +398,75 @@ https://www.wired.com/feed/tag/ai/latest/rss"""
                 st.error(f"An error occurred: {str(e)}")
             finally:
                 st.session_state['_run_analysis'] = False
-    
+
+        # Display current analysis if it exists
+        if st.session_state.current_analysis:
+            st.subheader("Cross-Feed Analysis:")
+            st.write(st.session_state.current_analysis)
+
+        # Chat interface
+        st.markdown("---")
+        st.subheader("💬 Chat with Analysis")
+        
+        # Initialize API client for chat
+        if 'api_client' not in st.session_state:
+            st.session_state.api_client = APIClient()
+        
+        if 'chat_history' not in st.session_state:
+            st.session_state.chat_history = []
+        
+        # Get the latest analysis from session state or history
+        analysis_to_use = st.session_state.current_analysis
+        if not analysis_to_use:
+            history = load_analysis_history()
+            if history:
+                analysis_to_use = history[0]['summary']
+        
+        if not analysis_to_use:
+            st.info("Run an analysis above to start chatting about the results.")
+        else:
+            chat_col1, chat_col2 = st.columns([3, 1])
+            
+            with chat_col1:
+                user_question = st.text_input("Ask a question about the analysis:", 
+                    key="chat_input", 
+                    placeholder="e.g., 'What are the top recruitment opportunities?'")
+            
+            with chat_col2:
+                ask_button = st.button("Ask", key="ask_button", use_container_width=True)
+            
+            if ask_button and user_question:
+                try:
+                    chat_prompt = f"""Based on the following analysis, please answer the question: "{user_question}"
+                    
+Analysis:
+{analysis_to_use}
+
+Please provide a clear and concise response."""
+                    
+                    response = st.session_state.api_client.get_completion(
+                        content=chat_prompt,
+                        model=selected_model
+                    )
+                    
+                    # Update chat history without clearing the page
+                    st.session_state.chat_history.append(("You", user_question))
+                    st.session_state.chat_history.append(("Assistant", response))
+                    
+                except Exception as e:
+                    st.error(f"Error generating response: {str(e)}")
+
+            # Display chat history
+            st.markdown("#### Recent Conversation")
+            chat_container = st.container()
+            with chat_container:
+                for role, message in reversed(st.session_state.chat_history[-6:]):
+                    if role == "You":
+                        st.markdown(f"**👤 You:** {message}")
+                    else:
+                        st.markdown(f"**🤖 Assistant:** {message}")
+                    st.markdown("---")
+
     with tab2:
         st.subheader("Previous Analyses")
         history = load_analysis_history()
