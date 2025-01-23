@@ -337,7 +337,6 @@ https://www.wired.com/feed/tag/ai/latest/rss"""
     tab1, tab2 = st.tabs(["Current Analysis", "Analysis History"])
     
     with tab1:
-        # Store analysis result in session state to persist it
         if 'current_analysis' not in st.session_state:
             st.session_state.current_analysis = None
 
@@ -399,10 +398,39 @@ https://www.wired.com/feed/tag/ai/latest/rss"""
             finally:
                 st.session_state['_run_analysis'] = False
 
-        # Display current analysis if it exists
+        # Display analysis and downloads in a single place
         if st.session_state.current_analysis:
             st.subheader("Cross-Feed Analysis:")
             st.write(st.session_state.current_analysis)
+            
+            # Add download buttons in a smaller container
+            st.write("📥 Download Analysis:")
+            download_col1, download_col2, download_col3 = st.columns([1, 1, 2])
+            
+            timestamp = datetime.now()  # For download filenames
+            
+            with download_col1:
+                txt_content = f"Analysis Generated at: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n\n{st.session_state.current_analysis}"
+                b64_txt = base64.b64encode(txt_content.encode()).decode()
+                href_txt = f'<a href="data:text/plain;base64,{b64_txt}" download="analysis_{timestamp.strftime("%Y%m%d_%H%M%S")}.txt">Download as TXT</a>'
+                st.markdown(href_txt, unsafe_allow_html=True)
+            
+            with download_col2:
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", size=12)
+                pdf.multi_cell(0, 10, txt=txt_content)
+                
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                    pdf.output(tmp_file.name)
+                    with open(tmp_file.name, "rb") as f:
+                        b64_pdf = base64.b64encode(f.read()).decode()
+                    os.unlink(tmp_file.name)
+                
+                href_pdf = f'<a href="data:application/pdf;base64,{b64_pdf}" download="analysis_{timestamp.strftime("%Y%m%d_%H%M%S")}.pdf">Download as PDF</a>'
+                st.markdown(href_pdf, unsafe_allow_html=True)
+
+            st.caption(f"Analysis generated using {selected_model}")
 
         # Chat interface
         st.markdown("---")
