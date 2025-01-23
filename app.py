@@ -355,59 +355,26 @@ https://www.wired.com/feed/tag/ai/latest/rss"""
                 content = extract_content(entries, max_entries)
                 st.write(f"Content extracted from {feed_count} feeds successfully.")
                 
-                timestamp = datetime.now()  # Move timestamp definition here, before it's used
-                
+                timestamp = datetime.now()
                 summary = generate_summary(content, feed_count, user_prompt)
                 st.session_state.current_analysis = summary  # Store in session state
+                st.session_state.current_timestamp = timestamp  # Store timestamp in session state
                 
-                st.subheader("Cross-Feed Analysis:")
-                st.write(summary)
-                
-                # Add download buttons in a smaller container
-                st.write("📥 Download Analysis:")
-                download_col1, download_col2, download_col3 = st.columns([1, 1, 2])
-                
-                with download_col1:
-                    txt_content = f"Analysis Generated at: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n\n{summary}"
-                    b64_txt = base64.b64encode(txt_content.encode()).decode()
-                    href_txt = f'<a href="data:text/plain;base64,{b64_txt}" download="analysis_{timestamp.strftime("%Y%m%d_%H%M%S")}.txt">Download as TXT</a>'
-                    st.markdown(href_txt, unsafe_allow_html=True)
-                
-                with download_col2:
-                    pdf = FPDF()
-                    pdf.add_page()
-                    pdf.set_font("Arial", size=12)
-                    pdf.multi_cell(0, 10, txt=txt_content)
-                    
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                        pdf.output(tmp_file.name)
-                        with open(tmp_file.name, "rb") as f:
-                            b64_pdf = base64.b64encode(f.read()).decode()
-                        os.unlink(tmp_file.name)
-                    
-                    href_pdf = f'<a href="data:application/pdf;base64,{b64_pdf}" download="analysis_{timestamp.strftime("%Y%m%d_%H%M%S")}.pdf">Download as PDF</a>'
-                    st.markdown(href_pdf, unsafe_allow_html=True)
-                
-                save_analysis_result(summary, timestamp)
-                st.caption(f"Analysis generated at: {timestamp.strftime('%Y%m-%d %H:%M:%S')} using {selected_model}")
-                
-            except ValueError as ve:
-                st.error(f"Configuration error: {str(ve)}")
             except Exception as e:
                 st.error(f"An error occurred: {str(e)}")
             finally:
                 st.session_state['_run_analysis'] = False
 
-        # Display analysis and downloads in a single place
+        # Only show analysis once with download options
         if st.session_state.current_analysis:
             st.subheader("Cross-Feed Analysis:")
             st.write(st.session_state.current_analysis)
             
-            # Add download buttons in a smaller container
+            timestamp = getattr(st.session_state, 'current_timestamp', datetime.now())
+            
+            # Add download buttons
             st.write("📥 Download Analysis:")
             download_col1, download_col2, download_col3 = st.columns([1, 1, 2])
-            
-            timestamp = datetime.now()  # For download filenames
             
             with download_col1:
                 txt_content = f"Analysis Generated at: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n\n{st.session_state.current_analysis}"
@@ -431,6 +398,7 @@ https://www.wired.com/feed/tag/ai/latest/rss"""
                 st.markdown(href_pdf, unsafe_allow_html=True)
 
             st.caption(f"Analysis generated using {selected_model}")
+            save_analysis_result(st.session_state.current_analysis, timestamp)
 
         # Chat interface
         st.markdown("---")
