@@ -50,66 +50,69 @@ st.sidebar.markdown("""
 selected_model = "gemini-2.0-flash-thinking-exp"
 
 # Default prompt
-DEFAULT_PROMPT = """Analyze {feed_count} RSS news feeds and deliver a comprehensive report focusing on talent movement, leadership changes, layoffs, and related announcements. Structure your analysis [...]
+DEFAULT_PROMPT = """Analyze {feed_count} RSS news feeds and produce a well-structured report on talent movement, leadership changes, layoffs, and related announcements. Ensure the final output is clearly organized, with consistent numbering, bullet points, and spacing.
 
 TOP MAJOR TALENT MOVEMENT STORIES:
-
-List up to the top 3 major talent movement stories across all feeds. If more than 3 major stories are identified, list the top 3 and acknowledge the existence of additional significant stories. If few[...]
+- Identify up to the top 3 major talent movement stories across all feeds.
+- If more than 3 major stories are found, list the top 3 and note that additional significant stories exist.
+- If fewer than 3 major stories are identified, list all that meet the criteria.
 
 For each major story:
 1. Headline & Core Facts
-   - Primary Headline/Topic: Clearly state the main headline or topic of the story.
-   - Key Facts and Developments: Summarize the essential details, including who is involved (names and titles), what changes are occurring, specific roles or departments affected, and any relevant tim[...]
-   - Number of Sources Covering This Story: Indicate how many of the analyzed feeds report on this story.
+   - Primary Headline/Topic: Clearly state the main headline or topic.
+   - Key Facts and Developments: Summarize essential details (names, titles, changes, roles/departments affected, timelines).
+   - Number of Sources Covering This Story: Indicate how many feeds report on this story.
 
 2. Coverage Analysis
-   - Presentation Across Sources: Describe how different sources present the story. Are there variations in emphasis or details?
-   - Unique Angles or Perspectives: Highlight any unique viewpoints or additional insights provided by specific sources.
-   - Additional Context: Provide any extra background information or context that enhances understanding of the story.
+   - Presentation Across Sources: Describe variations in emphasis or details across sources.
+   - Unique Angles or Perspectives: Highlight additional insights or viewpoints from specific sources.
+   - Additional Context: Provide any background details that enrich understanding of the story.
 
 3. Impact & Significance
-   - Why This Story Matters: Explain the importance of the story in the context of talent movement and recruitment.
-   - Potential Implications: Discuss possible outcomes or effects on the company and its employees, including specific roles or departments that may be impacted.
-   - Related Ongoing Developments: Mention any related events or trends that connect to this story.
+   - Why This Story Matters: Explain its importance in relation to talent movement and recruitment.
+   - Potential Implications: Discuss possible outcomes or effects on the company and its employees (roles or departments potentially impacted).
+   - Related Ongoing Developments: Mention any related events or trends connected to this story.
 
 4. Recruitment Implications
-   - Potential Recruitment Opportunities: Identify specific roles, departments, or skill sets that may become available.
-   - Talent Pool Insights: Provide insights into the types of candidates who may be seeking new opportunities as a result of this movement.
-   - Strategic Recommendations: Offer actionable strategies for recruiters to engage with potential candidates or leverage the movement for talent acquisition.
+   - Potential Recruitment Opportunities: Identify roles, departments, or skill sets that may become available.
+   - Talent Pool Insights: Note the types of candidates who may seek new opportunities due to this movement.
+   - Strategic Recommendations: Provide actionable strategies for recruiters to engage or leverage these developments.
 
-*If there are more than 3 major stories:*
-- **Additional Major Stories:** Note the existence of additional significant talent movement stories without detailing each one.
+If there are more than 3 major stories:
+- Additional Major Stories: Briefly acknowledge other significant talent movement stories without detailing each one.
 
 SECONDARY SIGNIFICANT TALENT MOVEMENT STORIES:
-
-List up to 2-3 other important stories with the following details. Include only those secondary stories that are relevant and do not overlap with major stories.
+- List 2–3 other important stories that are relevant but do not overlap with major stories.
 
 For each secondary story:
-- Headline & Core Facts: Include specific names, companies, roles affected, and key details.
-- Coverage: Note which of the analyzed feeds are reporting these stories.
-- Coverage Analysis: Briefly describe how the story is presented across sources.
-- Impact & Significance: Explain why these stories are significant for talent movement and recruitment strategies.
-- Recruitment Implications: Highlight potential recruitment opportunities or talent pool changes arising from these stories.
+- Headline & Core Facts: Include names, companies, roles, and key details.
+- Coverage: Note which feeds report the story.
+- Coverage Analysis: Briefly describe any variations across sources.
+- Impact & Significance: Explain the relevance for talent movement and recruitment strategies.
+- Recruitment Implications: Highlight possible recruitment opportunities or shifts in the talent pool.
 
 SOURCE COMPARISON:
-
-- Comprehensive Coverage: Identify which sources provide the most detailed and extensive coverage of talent movement stories.
-- Differences in Story Selection: Highlight any significant variations in the types of stories different sources prioritize.
-- Unique Stories: Point out any unique stories that are exclusively covered by single sources.
-- Source Reliability: Assess the reliability and focus areas of each source in relation to talent movement insights.
+- Comprehensive Coverage: Identify sources that provide the most detailed reporting on talent movement.
+- Differences in Story Selection: Highlight significant variations in story priorities among sources.
+- Unique Stories: Point out any exclusive stories covered by only one source.
+- Source Reliability: Offer a brief assessment of each source’s reliability and focus regarding talent movement.
 
 NOTABLE QUOTES:
-
-- Significant Quotes: Include 2-3 direct quotes from sources that are particularly insightful or impactful regarding talent movement.
-- Context for Each Quote: Provide background or explanation for each quote to understand its relevance.
-- Source Attribution and Significance: Note which source provided the quote and why it holds importance.
+- Significant Quotes: Include 2–3 direct quotes that offer insightful or impactful information about talent movement.
+- Context for Each Quote: Provide background or explanation for clarity.
+- Source Attribution and Significance: Mention the source and why the quote is valuable.
 
 GUIDELINES:
+- Specificity: Use clear data points (names, numbers, dates) instead of vague statements.
+- Relevance to Recruitment: Emphasize how each story affects talent acquisition and recruitment strategies.
+- Clarity and Organization: Present the information in an orderly, easy-to-read format.
+- Actionable Insights: Highlight advice or recommendations that inform proactive recruitment actions.
 
-- Specificity: Focus on concrete details, including names, numbers, dates, and factual information rather than vague statements.
-- Relevance to Recruitment: Emphasize aspects of each story that directly impact talent acquisition and recruitment strategies.
-- Clarity and Organization: Present information in a clear, well-organized manner to facilitate quick understanding and decision-making.
-- Actionable Insights: Where possible, highlight insights that can inform proactive recruitment actions."""
+OUTPUT FORMAT REQUIREMENTS:
+1. Use consistent numbering and bullet points.
+2. Maintain clear headings and subheadings.
+3. Avoid extra line breaks or inconsistent spacing.
+4. Present the final report in a clean, readable format."""
 
 # Prompt editor in sidebar
 st.sidebar.subheader("Analysis Prompt")
