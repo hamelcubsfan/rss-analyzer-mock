@@ -53,69 +53,90 @@ st.sidebar.markdown("""
 selected_model = "gemini-2.0-flash-thinking-exp"
 
 # Default prompt
-DEFAULT_PROMPT = """Analyze {feed_count} RSS news feeds and produce a well-structured report on talent movement, leadership changes, layoffs, and related announcements. Ensure the final output is clearly organized, with consistent numbering, bullet points, and spacing.
+DEFAULT_PROMPT = """Analyze {feed_count} RSS news feeds related to the autonomous vehicle (AV) and robotics industries to produce a structured report on talent movement, leadership changes, layoffs, and related industry announcements. The report should be tailored for a recruiter at Waymo, focusing on hiring implications in key tech roles for AV development.  
 
-TOP MAJOR TALENT MOVEMENT STORIES:
-- Identify up to the top 3 major talent movement stories across all feeds.
-- If more than 3 major stories are found, list the top 3 and note that additional significant stories exist.
-- If fewer than 3 major stories are identified, list all that meet the criteria.
+### OVERVIEW  
+Summarize key findings upfront, including:  
+- **Top Talent Movement Stories:** Major leadership changes, departures, or hires.  
+- **Industry Layoffs & Workforce Shifts:** Notable layoffs, hiring freezes, or workforce restructuring.  
+- **Emerging Trends & Impacts:** Recurring themes or broader shifts in talent movement affecting AV and robotics.  
+- **Recruitment Implications for Waymo:** Key takeaways and hiring opportunities.  
 
-For each major story:
-1. Headline & Core Facts
-   - Primary Headline/Topic: Clearly state the main headline or topic.
-   - Key Facts and Developments: Summarize essential details (names, titles, changes, roles/departments affected, timelines).
-   - Number of Sources Covering This Story: Indicate how many feeds report on this story.
+---
 
-2. Coverage Analysis
-   - Presentation Across Sources: Describe variations in emphasis or details across sources.
-   - Unique Angles or Perspectives: Highlight additional insights or viewpoints from specific sources.
-   - Additional Context: Provide any background details that enrich understanding of the story.
+## **DETAILED BREAKDOWN**  
 
-3. Impact & Significance
-   - Why This Story Matters: Explain its importance in relation to talent movement and recruitment.
-   - Potential Implications: Discuss possible outcomes or effects on the company and its employees (roles or departments potentially impacted).
-   - Related Ongoing Developments: Mention any related events or trends connected to this story.
+### **1. MAJOR TALENT MOVEMENT STORIES**  
+List **all** significant talent movement stories within the AV and robotics sectors. If multiple stories are found, prioritize by relevance and impact.  
 
-4. Recruitment Implications
-   - Potential Recruitment Opportunities: Identify roles, departments, or skill sets that may become available.
-   - Talent Pool Insights: Note the types of candidates who may seek new opportunities due to this movement.
-   - Strategic Recommendations: Provide actionable strategies for recruiters to engage or leverage these developments.
+For each story, include:  
+#### **Headline & Core Facts**  
+- **Primary Headline/Topic:** Clear, concise headline with company and individual’s role in AV or robotics.  
+- **Key Facts & Developments:** Names, titles, previous and new roles, relevant technologies (e.g., sensor fusion, AI), and timeline.  
+- **Source Coverage:** Number of feeds covering this story and any major discrepancies in reporting.  
 
-If there are more than 3 major stories:
-- Additional Major Stories: Briefly acknowledge other significant talent movement stories without detailing each one.
+#### **Coverage Analysis**  
+- **Presentation Across Sources:** Differences in emphasis between AV-focused and general tech news.  
+- **Unique Angles or Perspectives:** Additional insights from different sources.  
+- **Additional Context:** Background details, company positioning, and industry relevance.  
 
-SECONDARY SIGNIFICANT TALENT MOVEMENT STORIES:
-- List 2–3 other important stories that are relevant but do not overlap with major stories.
+#### **Impact & Significance**  
+- **Why This Matters:** Relevance to talent movement and competitive landscape.  
+- **Potential Implications:** Effects on the company, projects, and broader AV and robotics talent pool.  
+- **Related Ongoing Developments:** Any connections to broader industry trends.  
 
-For each secondary story:
-- Headline & Core Facts: Include names, companies, roles, and key details.
-- Coverage: Note which feeds report the story.
-- Coverage Analysis: Briefly describe any variations across sources.
-- Impact & Significance: Explain the relevance for talent movement and recruitment strategies.
-- Recruitment Implications: Highlight possible recruitment opportunities or shifts in the talent pool.
+#### **Recruitment Implications for Waymo**  
+- **Potential Hiring Opportunities:** Roles, departments, and skill sets in demand.  
+- **Talent Pool Insights:** Expected job seekers with expertise in AV/robotics.  
+- **Strategic Recommendations:** How Waymo recruiters can leverage these changes.  
 
-SOURCE COMPARISON:
-- Comprehensive Coverage: Identify sources that provide the most detailed reporting on talent movement.
-- Differences in Story Selection: Highlight significant variations in story priorities among sources.
-- Unique Stories: Point out any exclusive stories covered by only one source.
-- Source Reliability: Offer a brief assessment of each source’s reliability and focus regarding talent movement.
+---
 
-NOTABLE QUOTES:
-- Significant Quotes: Include 2–3 direct quotes that offer insightful or impactful information about talent movement.
-- Context for Each Quote: Provide background or explanation for clarity.
-- Source Attribution and Significance: Mention the source and why the quote is valuable.
+### **2. INDUSTRY LAYOFFS & WORKFORCE SHIFTS**  
+Highlight significant layoffs, hiring freezes, or workforce restructuring across AV and robotics companies.  
 
-GUIDELINES:
-- Specificity: Use clear data points (names, numbers, dates) instead of vague statements.
-- Relevance to Recruitment: Emphasize how each story affects talent acquisition and recruitment strategies.
-- Clarity and Organization: Present the information in an orderly, easy-to-read format.
-- Actionable Insights: Highlight advice or recommendations that inform proactive recruitment actions.
+For each major event:  
+- **Company & Scope:** Name of the company and scale of layoffs (number of employees, affected departments).  
+- **Reasoning & Trends:** Explanation of layoffs (e.g., funding issues, restructuring, market downturn).  
+- **Impact on Talent Movement:** Where displaced talent is likely to move.  
+- **Recruitment Opportunities for Waymo:** High-value candidates now on the market.  
 
-OUTPUT FORMAT REQUIREMENTS:
-1. Use consistent numbering and bullet points.
-2. Maintain clear headings and subheadings.
-3. Avoid extra line breaks or inconsistent spacing.
-4. Present the final report in a clean, readable format."""
+---
+
+### **3. SECONDARY SIGNIFICANT TALENT MOVEMENT STORIES**  
+List **other** important talent movement stories that do not overlap with major stories.  
+
+For each secondary story:  
+- **Headline & Core Facts:** Names, companies, roles, key details.  
+- **Source Coverage:** Notable variations in reporting.  
+- **Impact & Significance:** Relevance for talent movement in AV and robotics.  
+- **Recruitment Implications for Waymo:** Hiring opportunities and shifts in the talent pool.  
+
+---
+
+### **4. SOURCE COMPARISON & ANALYSIS**  
+Evaluate how different sources cover AV and robotics talent movement:  
+- **Comprehensive Coverage:** Best sources for tracking talent shifts.  
+- **Differences in Story Selection:** Key variations among sources.  
+- **Unique Stories:** Any exclusive stories covered by only one source.  
+- **Source Reliability:** Assessment of trustworthiness and focus on talent movement.  
+
+---
+
+### **5. NOTABLE QUOTES & INSIGHTS**  
+Include **2–3 direct quotes** that provide meaningful insights on talent movement.  
+For each quote:  
+- **Text of Quote:** Exact wording.  
+- **Context & Source:** Explanation of relevance.  
+- **Significance for Waymo Recruiting:** How this insight informs hiring strategy.  
+
+---
+
+### **GUIDELINES & OUTPUT FORMAT**  
+- **Be Specific:** Use clear data points (names, dates, numbers) instead of vague statements.  
+- **Recruitment-Focused:** Emphasize hiring implications for Waymo.  
+- **Clear & Readable:** Consistent numbering, bullet points, and formatting.  
+- **Actionable Insights:** Recommendations for Waymo recruiters. """
 
 # Prompt editor in sidebar
 st.sidebar.subheader("Analysis Prompt")
@@ -308,9 +329,11 @@ def main():
     
     default_feeds = """https://techcrunch.com/feed/
 https://www.techmeme.com/feed.xml
-https://mashable.com/feeds/rss/all
+https://www.automotivedive.com/feeds/news/
 https://www.geekwire.com/feed/
-https://www.wired.com/feed/tag/ai/latest/rss"""
+https://www.wired.com/feed/tag/ai/latest/rss
+https://www.autonomousvehicleinternational.com/news/feed
+https://seekingalpha.com/market_currents.xml"""
     
     rss_feeds = st.text_area(
         "Enter RSS feed URLs (one per line):", 
