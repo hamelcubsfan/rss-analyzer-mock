@@ -44,13 +44,13 @@ else:
 
 # Simplify model selection - only show Gemini
 st.sidebar.markdown("""
-🤖 Using Google's Gemini 2.0 Flash model
+🤖 Using Google's Gemini 2.5 Pro model
 - Provides fast, high-quality responses
 - Optimized for analysis tasks
 """)
 
 # Remove the old model selection code and replace with:
-selected_model = "gemini-2.0-flash-thinking-exp"
+selected_model = "gemini-2.5-pro-exp-03-25"
 
 # Default prompt
 DEFAULT_PROMPT = """Analyze {feed_count} RSS news feeds related to the autonomous vehicle (AV) and robotics industries to produce a structured report on talent movement, leadership changes, layoffs, and related industry announcements. The report should be tailored for a recruiter at Waymo, focusing on hiring implications in key tech roles for AV development.  
@@ -236,7 +236,7 @@ def extract_content(entries: List[Dict[str, Any]], max_entries: int = 10) -> str
 
 class APIClient:
     def __init__(self):
-        self.model = genai.GenerativeModel('gemini-2.0-flash-thinking-exp')
+        self.model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')
     
     def get_completion(self, content: str, model: str) -> str:
         try:
@@ -260,7 +260,7 @@ def generate_summary(content, feed_count, prompt_template):
         
         summary = st.session_state.api_client.get_completion(
             content=f"{formatted_prompt}\n\nContent to analyze:\n{cleaned_content}",
-            model="gemini-2.0-flash-thinking-exp"  # Use the model directly
+            model="gemini-2.5-pro-exp-03-25"  # Use the updated model directly
         )
         
         # Save the summary
