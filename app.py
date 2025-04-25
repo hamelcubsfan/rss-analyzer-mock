@@ -103,50 +103,17 @@ if enable_sched:
 if hasattr(st.secrets, "gemini_api_key"):
     genai.configure(api_key=st.secrets.gemini_api_key)
 else:
-    st.error("Missing Gemini API key in .streamlit/secrets.toml")
-    st.stop()
-
-# Flexible parser: RSS/Atom or HTML (Techmeme River)
-@st.cache_data(ttl=CACHE_TTL)
-def parse_feeds(urls: List[str]) -> List[Dict[str, Any]]:
-    entries: List[Dict[str, Any]] = []
-    for url in urls:
-        try:
-            resp = requests.get(url, timeout=10, headers={"User-Agent": "rss-analyzer"})
-            resp.raise_for_status()
-        except Exception as e:
-            st.warning(f"Could not fetch {url}: {e}")
-            continue
-        raw = resp.content
-        # RSS/Atom detection
-        if b"<rss" in raw[:512] or b"<feed" in raw[:512]:
-            feed = feedparser.parse(raw)
-            src = feed.feed.get('title', url)
-            for e0 in feed.entries:
+            # HTML fallback: scrape full page text
+            try:
+                text = BeautifulSoup(raw, 'lxml').get_text(separator=' ')
                 entries.append({
-                    'feed_source': src,
-                    'title': _clean_text(e0.get('title', '')),
-                    'description': _clean_text(e0.get('description', '')),
-                    'published': e0.get('published', '')
+                    'feed_source': url,
+                    'title': url,
+                    'description': text,
+                    'published': ''
                 })
-        else:
-            # Try Techmeme River HTML
-            river_items = _parse_html_river(raw, url)
-            if river_items:
-                entries.extend(river_items)
-            else:
-                # Generic HTML: extract headings as fallback
-                soup = BeautifulSoup(raw, 'lxml')
-                headers = soup.find_all(['h1', 'h2', 'h3'])
-                for hdr in headers[:MAX_RETRIES * 5]:
-                    text = hdr.get_text().strip()
-                    if text:
-                        entries.append({
-                            'feed_source': url,
-                            'title': text,
-                            'description': '',
-                            'published': ''
-                        })
+            except Exception as e:
+                st.warning(f"Failed HTML scrape for {url}: {e}")
     return entries
 
 
