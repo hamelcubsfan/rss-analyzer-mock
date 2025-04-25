@@ -34,7 +34,7 @@ st.set_page_config(
 
 # Title & description
 st.title("📰 RSS Feed Analyzer")
-st.write("Discover insights across multiple RSS feeds using AI-powered analysis")
+st.write("Discover insights across multiple RSS feeds and HTML sources using AI-powered analysis")
 
 # Sidebar – Configuration
 st.sidebar.header("⚙️ Configuration")
@@ -66,6 +66,15 @@ urls = st.sidebar.text_area(
 )
 rss_feeds = [u.strip() for u in urls.splitlines() if u.strip()]
 
+# Entries to analyze per source
+max_entries = st.sidebar.number_input(
+    "Entries per source:",
+    min_value=1,
+    max_value=50,
+    value=10,
+    help="How many items to extract per feed/source"
+)
+
 # Scheduled Analysis
 st.sidebar.subheader("Scheduled Analysis")
 enable_sched = st.sidebar.checkbox("Enable Scheduled Analysis")
@@ -81,7 +90,7 @@ else:
     st.error("Missing Gemini API key in .streamlit/secrets.toml")
     st.stop()
 
-# Flexible parser: RSS/Atom or Techmeme River
+# Flexible parser: RSS/Atom or HTML (Techmeme River)
 @st.cache_data(ttl=CACHE_TTL)
 def parse_feeds(urls: List[str]) -> List[Dict[str, Any]]:
     entries: List[Dict[str, Any]] = []
@@ -93,6 +102,7 @@ def parse_feeds(urls: List[str]) -> List[Dict[str, Any]]:
             st.warning(f"Could not fetch {url}: {e}")
             continue
         raw = resp.content
+        # detect RSS/Atom
         if b"<rss" in raw[:512] or b"<feed" in raw[:512]:
             feed = feedparser.parse(raw)
             src = feed.feed.get('title', url)
@@ -109,15 +119,18 @@ def parse_feeds(urls: List[str]) -> List[Dict[str, Any]]:
 
 
 def _parse_html_river(html: bytes, url: str) -> List[Dict[str, Any]]:
+    # look for <river> tag or div#river
     soup = BeautifulSoup(html, 'lxml')
-    river = soup.find('river')
+    river = soup.find('river') or soup.find(id='river')
     if not river:
         return []
     out: List[Dict[str, Any]] = []
-    for b in river.stripped_strings:
-        parts = b.split('•', 1)
-        if len(parts) != 2:
+    # split text by bullet char
+    text = river.get_text(separator='\n')
+    for line in text.split('\n'):
+        if '•' not in line:
             continue
+        parts = line.split('•', 1)
         t, rest = parts[0].strip(), parts[1].strip()
         m = re.match(r"(.+?)\s*/\s*(.+?):\s*(.+)", rest)
         if not m:
@@ -149,7 +162,7 @@ def _clean_text(txt: str) -> str:
         txt = txt.replace(a, b)
     return txt
 
-# Summarization
+# Summarization classes & functions
 class APIClient:
     def __init__(self):
         self.model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')
@@ -165,11 +178,10 @@ def generate_summary(content: str, count: int, prompt: str) -> str:
 
 # Extract content
 @st.cache_data(ttl=CACHE_TTL)
-def extract_content(entries: List[Dict[str, Any]], max_entries: int = 10) -> str:
+def extract_content(entries: List[Dict[str, Any]], max_entries: int) -> str:
     grouped: Dict[str, List[Dict[str, Any]]] = {}
     for e in entries:
-        src = e['feed_source']
-        grouped.setdefault(src, []).append(e)
+        grouped.setdefault(e['feed_source'], []).append(e)
     parts: List[str] = []
     for src, items in grouped.items():
         parts.append(f"\nSource: {src}\n" + "-"*40)
@@ -177,49 +189,5 @@ def extract_content(entries: List[Dict[str, Any]], max_entries: int = 10) -> str
             parts.append(f"Title: {it['title']}\nDate: {it['published']}\nDesc: {it['description']}\n")
     return "\n".join(parts)
 
-# History & scheduling helpers (unchanged from original)
-def save_analysis_result(summary: str, timestamp: datetime) -> None:
-    os.makedirs('analysis_history', exist_ok=True)
-    fn = f"analysis_history/analysis_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
-    with open(fn, 'w') as f:
-        json.dump({'timestamp': timestamp.isoformat(), 'summary': summary}, f)
-
-
-def load_analysis_history() -> List[Dict[str, Any]]:
-    if not os.path.exists('analysis_history'):
-        return []
-    res = []
-    for fn in sorted(os.listdir('analysis_history'), reverse=True):
-        if fn.endswith('.json'):
-            with open(f'analysis_history/{fn}') as f:
-                res.append(json.load(f))
-    return res
-
-
-# Main UI logic
-if st.button("Run Cross-Feed Analysis"):
-    if not rss_feeds:
-        st.error("Enter at least one URL.")
-    else:
-        st.write(f"Analyzing {len(rss_feeds)} sources...")
-        entries = parse_feeds(rss_feeds)
-        st.write(f"Parsed {len(entries)} entries.")
-        content = extract_content(entries)
-        summary = generate_summary(content, len(rss_feeds), user_prompt)
-        st.subheader("Analysis Result")
-        st.write(summary)
-        b64 = base64.b64encode(summary.encode()).decode()
-        st.markdown(f"<a href='data:text/plain;base64,{b64}' download='analysis.txt'>Download</a>", unsafe_allow_html=True)
-
-# Scheduler (if needed)
-scheduler = BackgroundScheduler(timezone=pytz.UTC)
-if enable_sched:
-    scheduler.add_job(
-        lambda: None, 'cron', hour=t1.hour, minute=t1.minute, timezone=tz)
-    scheduler.add_job(
-        lambda: None, 'cron', hour=t2.hour, minute=t2.minute, timezone=tz)
-    if not scheduler.running:
-        scheduler.start()
-else:
-    if scheduler.running:
-        scheduler.shutdown()
+# Analysis history helpers
+```
