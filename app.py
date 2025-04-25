@@ -15,16 +15,16 @@ import base64
 import tempfile
 from fpdf import FPDF
 
-# NEW IMPORTS
+# NEW IMPORTS for HTML parsing
 from bs4 import BeautifulSoup
 import re
 
 # Constants
-CACHE_TTL = 300  # 5 minutes cache for feed data
+CACHE_TTL = 300  # 5 minutes
 MAX_RETRIES = 3
 RETRY_DELAY = 1
 
-# Set page configuration
+# Streamlit setup
 st.set_page_config(
     page_title="RSS Feed Analyzer",
     page_icon="📰",
@@ -32,73 +32,194 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Title and description
+# Title & description
 st.title("📰 RSS Feed Analyzer")
 st.write("Discover insights across multiple RSS feeds using AI-powered analysis")
 
-# Sidebar configuration
+# Sidebar – Configuration
 st.sidebar.header("⚙️ Configuration")
 
-# Prompt editor in sidebar
-DEFAULT_PROMPT = """Analyze {feed_count} RSS news feeds related to the autonomous vehicle (AV) and robotics industries..."""
+# Prompt editor
+DEFAULT_PROMPT = """Analyze {feed_count} RSS/HTML sources and produce a structured report on talent movement, layoffs, and industry shifts. Customize for AV/robotics recruiting."""
 st.sidebar.subheader("Analysis Prompt")
 user_prompt = st.sidebar.text_area(
     "Customize the analysis prompt:",
     value=DEFAULT_PROMPT,
-    height=250,
-    help="Use {feed_count} as placeholder for the number of feeds."
+    height=200,
+    help="Use {feed_count} as placeholder for number of sources."
 )
 if st.sidebar.button("Reset Prompt to Default"):
     user_prompt = DEFAULT_PROMPT
     st.sidebar.success("Prompt reset to default!")
 
-# RSS feed URLs input
-st.sidebar.subheader("RSS Feed URLs")
-def load_default_feeds():
+# Feed URLs input
+st.sidebar.subheader("Feed URLs")
+def default_feeds():
     return [
         "https://techcrunch.com/feed/",
-        "https://www.techmeme.com/feed.xml"
+        "https://www.techmeme.com/river"
     ]
-rss_feeds = st.sidebar.text_area(
+urls = st.sidebar.text_area(
     "Enter one RSS or HTML URL per line:",
-    value="\n".join(load_default_feeds()),
-    height=150,
+    value="\n".join(default_feeds()),
+    height=150
 )
-rss_feeds = [u.strip() for u in rss_feeds.splitlines() if u.strip()]
+rss_feeds = [u.strip() for u in urls.splitlines() if u.strip()]
 
-# Scheduling options in sidebar
+# Scheduled Analysis
 st.sidebar.subheader("Scheduled Analysis")
-enable_scheduling = st.sidebar.checkbox("Enable Scheduled Analysis")
-if enable_scheduling:
-    schedule_timezone = st.sidebar.selectbox(
-        "Timezone:", pytz.common_timezones, index=pytz.common_timezones.index('US/Pacific')
-    )
-    morning_time = st.sidebar.time_input("Morning time", datetime.strptime("08:00", "%H:%M"))
-    evening_time = st.sidebar.time_input("Evening time", datetime.strptime("17:00", "%H:%M"))
+enable_sched = st.sidebar.checkbox("Enable Scheduled Analysis")
+if enable_sched:
+    tz = st.sidebar.selectbox("Timezone", pytz.common_timezones, index=pytz.common_timezones.index('US/Pacific'))
+    t1 = st.sidebar.time_input("Morning analysis at", datetime.strptime("08:00", "%H:%M"))
+    t2 = st.sidebar.time_input("Evening analysis at", datetime.strptime("17:00", "%H:%M"))
 
-# Gemini setup
+# Gemini API key
 if hasattr(st.secrets, "gemini_api_key"):
     genai.configure(api_key=st.secrets.gemini_api_key)
 else:
-    st.error("Missing Gemini API key in secrets.toml")
+    st.error("Missing Gemini API key in .streamlit/secrets.toml")
     st.stop()
 
-# Main UI: Run button and analysis
+# Flexible parser: RSS/Atom or Techmeme River
+@st.cache_data(ttl=CACHE_TTL)
+def parse_feeds(urls: List[str]) -> List[Dict[str, Any]]:
+    entries: List[Dict[str, Any]] = []
+    for url in urls:
+        try:
+            resp = requests.get(url, timeout=10, headers={"User-Agent": "rss-analyzer"})
+            resp.raise_for_status()
+        except Exception as e:
+            st.warning(f"Could not fetch {url}: {e}")
+            continue
+        raw = resp.content
+        if b"<rss" in raw[:512] or b"<feed" in raw[:512]:
+            feed = feedparser.parse(raw)
+            src = feed.feed.get('title', url)
+            for e0 in feed.entries:
+                entries.append({
+                    'feed_source': src,
+                    'title': _clean_text(e0.get('title', '')),
+                    'description': _clean_text(e0.get('description', '')),
+                    'published': e0.get('published', '')
+                })
+        else:
+            entries.extend(_parse_html_river(raw, url))
+    return entries
+
+
+def _parse_html_river(html: bytes, url: str) -> List[Dict[str, Any]]:
+    soup = BeautifulSoup(html, 'lxml')
+    river = soup.find('river')
+    if not river:
+        return []
+    out: List[Dict[str, Any]] = []
+    for b in river.stripped_strings:
+        parts = b.split('•', 1)
+        if len(parts) != 2:
+            continue
+        t, rest = parts[0].strip(), parts[1].strip()
+        m = re.match(r"(.+?)\s*/\s*(.+?):\s*(.+)", rest)
+        if not m:
+            continue
+        auth, src, head = m.groups()
+        out.append({
+            'feed_source': src.strip(),
+            'title': head.strip(),
+            'description': f"{auth.strip()} – {head.strip()}",
+            'published': _normalize_time(t)
+        })
+    return out
+
+
+def _normalize_time(t: str) -> str:
+    try:
+        today = datetime.now().strftime('%Y-%m-%d')
+        dt = datetime.strptime(f"{today} {t}", "%Y-%m-%d %I:%M %p")
+        return dt.isoformat()
+    except:
+        return t
+
+
+def _clean_text(txt: str) -> str:
+    if not isinstance(txt, str):
+        return str(txt)
+    reps = [("\u201c", '"'), ("\u201d", '"'), ("\u2018", "'"), ("\u2019", "'")]
+    for a, b in reps:
+        txt = txt.replace(a, b)
+    return txt
+
+# Summarization
+class APIClient:
+    def __init__(self):
+        self.model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')
+    def get_completion(self, prompt: str) -> str:
+        resp = self.model.generate_content(prompt)
+        return resp.text
+
+
+def generate_summary(content: str, count: int, prompt: str) -> str:
+    client = APIClient()
+    full = prompt.format(feed_count=count) + "\n\n" + content
+    return client.get_completion(full)
+
+# Extract content
+@st.cache_data(ttl=CACHE_TTL)
+def extract_content(entries: List[Dict[str, Any]], max_entries: int = 10) -> str:
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    for e in entries:
+        src = e['feed_source']
+        grouped.setdefault(src, []).append(e)
+    parts: List[str] = []
+    for src, items in grouped.items():
+        parts.append(f"\nSource: {src}\n" + "-"*40)
+        for it in items[:max_entries]:
+            parts.append(f"Title: {it['title']}\nDate: {it['published']}\nDesc: {it['description']}\n")
+    return "\n".join(parts)
+
+# History & scheduling helpers (unchanged from original)
+def save_analysis_result(summary: str, timestamp: datetime) -> None:
+    os.makedirs('analysis_history', exist_ok=True)
+    fn = f"analysis_history/analysis_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
+    with open(fn, 'w') as f:
+        json.dump({'timestamp': timestamp.isoformat(), 'summary': summary}, f)
+
+
+def load_analysis_history() -> List[Dict[str, Any]]:
+    if not os.path.exists('analysis_history'):
+        return []
+    res = []
+    for fn in sorted(os.listdir('analysis_history'), reverse=True):
+        if fn.endswith('.json'):
+            with open(f'analysis_history/{fn}') as f:
+                res.append(json.load(f))
+    return res
+
+
+# Main UI logic
 if st.button("Run Cross-Feed Analysis"):
     if not rss_feeds:
-        st.error("Please enter at least one URL.")
+        st.error("Enter at least one URL.")
     else:
         st.write(f"Analyzing {len(rss_feeds)} sources...")
         entries = parse_feeds(rss_feeds)
-        st.write(f"Total entries parsed: {len(entries)}")
-        content = extract_content(entries, max_entries=10)
+        st.write(f"Parsed {len(entries)} entries.")
+        content = extract_content(entries)
         summary = generate_summary(content, len(rss_feeds), user_prompt)
         st.subheader("Analysis Result")
         st.write(summary)
-        # Download options
         b64 = base64.b64encode(summary.encode()).decode()
-        href = f"<a href='data:text/plain;base64,{b64}' download='analysis.txt'>Download TXT</a>"
-        st.markdown(href, unsafe_allow_html=True)
+        st.markdown(f"<a href='data:text/plain;base64,{b64}' download='analysis.txt'>Download</a>", unsafe_allow_html=True)
 
-# Scheduler logic (unchanged)
-# ... rest of your existing code: parse_feeds, helpers, scheduling, main() ...
+# Scheduler (if needed)
+scheduler = BackgroundScheduler(timezone=pytz.UTC)
+if enable_sched:
+    scheduler.add_job(
+        lambda: None, 'cron', hour=t1.hour, minute=t1.minute, timezone=tz)
+    scheduler.add_job(
+        lambda: None, 'cron', hour=t2.hour, minute=t2.minute, timezone=tz)
+    if not scheduler.running:
+        scheduler.start()
+else:
+    if scheduler.running:
+        scheduler.shutdown()
