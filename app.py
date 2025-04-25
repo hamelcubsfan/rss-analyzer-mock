@@ -50,14 +50,9 @@ if st.sidebar.button("Reset prompt to default"):
     st.sidebar.success("Prompt reset")
 
 # URL input
-def default_urls():
-    return [
-        "https://techcrunch.com/feed/",
-        "https://www.techmeme.com/river"
-    ]
 urls_text = st.sidebar.text_area(
     "Enter RSS or HTML URLs (one per line):",
-    value="\n".join(default_urls()),
+    value="https://techcrunch.com/feed/\nhttps://www.techmeme.com/river",
     height=150
 )
 urls = [u.strip() for u in urls_text.splitlines() if u.strip()]
@@ -85,7 +80,7 @@ def parse_feeds(urls: List[str]) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     for url in urls:
         try:
-            resp = requests.get(url, timeout=10, headers={'User-Agent':'feed-analyzer'})
+            resp = requests.get(url, timeout=10)
             resp.raise_for_status()
             raw = resp.content
         except Exception as e:
@@ -103,63 +98,44 @@ def parse_feeds(urls: List[str]) -> List[Dict[str, Any]]:
                     'published': entry.get('published','').strip()
                 })
         else:
-            # HTML: try river parser
-            items = parse_html_river(raw)
-            if items:
-                results.extend(items)
-            else:
-                # Fallback: full text as one item
-                text = BeautifulSoup(raw, 'lxml').get_text(separator=' ')
-                results.append({
-                    'feed_source': url,
-                    'title': url,
-                    'description': text,
-                    'published': ''
-                })
+            # HTML page: extract main content via <article> or <main>
+            soup = BeautifulSoup(raw, 'lxml')
+            container = soup.find('article') or soup.find('main') or soup.body or soup
+            # Gather paragraphs, skip tiny/boilerplate ones
+            paragraphs = container.find_all('p')
+            text_lines = []
+            for p in paragraphs:
+                t = p.get_text().strip()
+                if len(t) < 50:
+                    continue
+                # skip common boilerplate
+                if any(kw in t for kw in ("©","Subscribe","Follow","Advertisement")):
+                    continue
+                text_lines.append(t)
+            text = "\n\n".join(text_lines)
+            # fallback if nothing extracted
+            if not text:
+                text = container.get_text(separator=' ', strip=True)
+            # extract title
+            title_tag = soup.find('h1') or soup.find('title')
+            title = title_tag.get_text().strip() if title_tag else url
+            results.append({
+                'feed_source': url,
+                'title': title,
+                'description': text,
+                'published': ''
+            })
     return results
-
-
-def parse_html_river(html: bytes) -> List[Dict[str, Any]]:
-    soup = BeautifulSoup(html, 'lxml')
-    container = soup.find('river') or soup.find(id='river')
-    if not container:
-        return []
-    text = container.get_text(separator='\n')
-    lines = [ln.strip() for ln in text.split('\n') if ln.strip()]
-    pattern = re.compile(r"(\d{1,2}:\d{2}\s?[AP]M)\s*•\s*([^/]+)/\s*([^:]+):\s*(.*)")
-    out = []
-    for ln in lines:
-        m = pattern.match(ln)
-        if not m: continue
-        tm, author, src, headline = m.groups()
-        out.append({
-            'feed_source': src.strip(),
-            'title': headline.strip(),
-            'description': f"{author.strip()} – {headline.strip()}",
-            'published': normalize_time(tm)
-        })
-    return out
-
-
-def normalize_time(t: str) -> str:
-    try:
-        today = datetime.now().strftime('%Y-%m-%d')
-        dt = datetime.strptime(f"{today} {t}", "%Y-%m-%d %I:%M %p")
-        return dt.isoformat()
-    except:
-        return t
 
 # Summarization
 class APIClient:
     def __init__(self):
-        # use Gemini Flash 2.5 model for faster throughput
         self.model = genai.GenerativeModel('models/gemini-2.5-flash-preview-04-17')
     def get_completion(self, prompt: str) -> str:
         return self.model.generate_content(prompt).text
 
 
 def summarize(content: str, count: int) -> str:
-    # Truncate content if too large
     max_len = 15000
     truncated = False
     if len(content) > max_len:
@@ -205,33 +181,6 @@ def main():
         st.write(result)
         data = base64.b64encode(result.encode()).decode()
         st.markdown(f"<a href='data:text/plain;base64,{data}' download='analysis.txt'>Download</a>", unsafe_allow_html=True)
-
-# History (sidebar)
-def load_history():
-    path = 'analysis_history'
-    if not os.path.exists(path): return []
-    files = sorted(os.listdir(path), reverse=True)
-    hist = []
-    for fn in files[:5]:
-        if fn.endswith('.json'):
-            with open(f"{path}/{fn}", 'r') as f:
-                hist.append(json.load(f))
-    return hist
-
-hist = load_history()
-if hist:
-    st.sidebar.subheader('History')
-    for h in hist:
-        st.sidebar.markdown(f"**{h['timestamp']}**: {h['summary'][:80]}...")
-
-# Scheduler
-scheduler = BackgroundScheduler(timezone=pytz.UTC)
-if enable_sched:
-    scheduler.add_job(main, 'cron', hour=t1.hour, minute=t1.minute, timezone=tz)
-    scheduler.add_job(main, 'cron', hour=t2.hour, minute=t2.minute, timezone=tz)
-    if not scheduler.running: scheduler.start()
-else:
-    if scheduler.running: scheduler.shutdown()
 
 # Run
 if __name__ == '__main__':
