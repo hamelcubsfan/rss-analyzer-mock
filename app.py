@@ -125,7 +125,7 @@ def parse_feeds(urls: List[str]) -> List[Dict[str, Any]]:
                     'published': e0.get('published','')
                 })
         else:
-            # Try river-style
+            # Try river-style parser
             river = _parse_html_river(raw, url)
             if river:
                 entries.extend(river)
@@ -146,19 +146,20 @@ def _parse_html_river(html: bytes, url: str) -> List[Dict[str, Any]]:
     tag = soup.find('river') or soup.find(id='river')
     if not tag:
         return []
-    text = tag.get_text(separator=' ')
-    # regex: time • author / source: headline
-    pat = re.compile(r"(\d{1,2}:\d{2}\s?[AP]M)\s*•\s*([^/]+)/\s*([^:]+):\s*(.*?)(?=(?:\d{1,2}:\d{2}\s?[AP]M\s*•)|$)", re.DOTALL)
+    # ensure each bullet on its own line
+    text = tag.get_text(separator='\n')
+    lines = [line.strip() for line in text.split('\n') if line.strip()]
+    pat = re.compile(r"(\d{1,2}:\d{2}\s?[AP]M)\s*•\s*([^/]+)/\s*([^:]+):\s*(.*)")
     out: List[Dict[str, Any]] = []
-    for m in pat.finditer(text):
-        t = m.group(1)
-        auth = m.group(2).strip()
-        src = m.group(3).strip()
-        head = m.group(4).strip()
+    for line in lines:
+        m = pat.match(line)
+        if not m:
+            continue
+        t, auth, src, head = m.groups()
         out.append({
-            'feed_source': src,
-            'title': head,
-            'description': f"{auth} – {head}",
+            'feed_source': src.strip(),
+            'title': head.strip(),
+            'description': f"{auth.strip()} – {head.strip()}",
             'published': _normalize_time(t)
         })
     return out
@@ -227,8 +228,6 @@ def main():
         st.write(summary)
         b64 = base64.b64encode(summary.encode()).decode()
         st.markdown(f"<a href='data:text/plain;base64,{b64}' download='analysis.txt'>Download Analysis</a>", unsafe_allow_html=True)
-
-    # Show previous if any
     history = load_analysis_history()
     if history:
         st.sidebar.subheader("Previous Analyses")
@@ -236,7 +235,6 @@ def main():
             st.sidebar.markdown(f"**{h['timestamp']}**: {h['summary'][:100]}...")
 
 # Analysis history helpers
-# Save & load
 from datetime import datetime as _dt
 
 def save_analysis_result(summary: str, timestamp: _dt) -> None:
