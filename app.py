@@ -190,4 +190,52 @@ def extract_content(entries: List[Dict[str, Any]], max_entries: int) -> str:
     return "\n".join(parts)
 
 # Analysis history helpers
-```
+def save_analysis_result(summary: str, timestamp: datetime) -> None:
+    os.makedirs('analysis_history', exist_ok=True)
+    fn = f"analysis_history/analysis_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
+    with open(fn, 'w', encoding='utf-8') as f:
+        json.dump({'timestamp': timestamp.isoformat(), 'summary': summary}, f)
+
+def load_analysis_history() -> List[Dict[str, Any]]:
+    if not os.path.exists('analysis_history'):
+        return []
+    res: List[Dict[str, Any]] = []
+    for fn in sorted(os.listdir('analysis_history'), reverse=True):
+        if fn.endswith('.json'):
+            with open(f'analysis_history/{fn}', 'r', encoding='utf-8') as f:
+                res.append(json.load(f))
+    return res
+
+# Main UI and execution
+def main():
+    if st.button("Run Cross-Feed Analysis"):
+        if not rss_feeds:
+            st.error("Enter at least one URL.")
+            return
+        st.write(f"Analyzing {len(rss_feeds)} sources...")
+        entries = parse_feeds(rss_feeds)
+        st.write(f"Parsed {len(entries)} entries.")
+        content = extract_content(entries, max_entries)
+        summary = generate_summary(content, len(rss_feeds), user_prompt)
+        st.subheader("Analysis Result")
+        st.write(summary)
+        b64 = base64.b64encode(summary.encode()).decode()
+        st.markdown(f"<a href='data:text/plain;base64,{b64}' download='analysis.txt'>Download Analysis</a>", unsafe_allow_html=True)
+
+# Scheduler setup
+scheduler = BackgroundScheduler(timezone=pytz.UTC)
+if enable_sched:
+    scheduler.add_job(lambda: main(), 'cron', hour=t1.hour, minute=t1.minute, timezone=tz)
+    scheduler.add_job(lambda: main(), 'cron', hour=t2.hour, minute=t2.minute, timezone=tz)
+    if not scheduler.running:
+        scheduler.start()
+else:
+    if scheduler.running:
+        scheduler.shutdown()
+
+# Run
+def __init__():
+    main()
+
+if __name__ == '__main__':
+    main()
