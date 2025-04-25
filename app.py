@@ -40,7 +40,23 @@ st.write("Discover insights across multiple RSS feeds and HTML sources using AI-
 st.sidebar.header("⚙️ Configuration")
 
 # Prompt editor
-DEFAULT_PROMPT = """Analyze {feed_count} RSS/HTML sources and produce a structured report on talent movement, layoffs, and industry shifts. Customize for AV/robotics recruiting."""
+DEFAULT_PROMPT = """
+Review the latest news from {feed_count} sources (RSS or HTML) and produce a clear, recruiter-focused report covering:
+
+1. **Executive Moves:** Promotions, departures, and leadership changes.
+2. **Workforce Updates:** Layoffs, hiring freezes, and major restructuring.
+3. **Industry Trends:** New funding rounds, partnerships, and market shifts.
+4. **Recruitment Opportunities:** Roles and skills in demand with candidate sourcing recommendations.
+
+### Format Requirements
+- **Overview:** A concise summary of the top 3 highlights.
+- **Sections:** Numbered lists matching points 1–4, with each entry including:
+  - **Title** (Headline)
+  - **Source** (Feed name or URL)
+  - **Time** (Timestamp)
+  - **Key Details & Impact** (Brief description and recruiting implications)
+
+Keep the report actionable for AV/robotics talent acquisition."""
 st.sidebar.subheader("Analysis Prompt")
 user_prompt = st.sidebar.text_area(
     "Customize the analysis prompt:",
