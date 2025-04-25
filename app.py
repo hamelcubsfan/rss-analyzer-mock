@@ -102,7 +102,7 @@ def parse_feeds(urls: List[str]) -> List[Dict[str, Any]]:
             st.warning(f"Could not fetch {url}: {e}")
             continue
         raw = resp.content
-        # detect RSS/Atom
+        # RSS/Atom detection
         if b"<rss" in raw[:512] or b"<feed" in raw[:512]:
             feed = feedparser.parse(raw)
             src = feed.feed.get('title', url)
@@ -114,7 +114,23 @@ def parse_feeds(urls: List[str]) -> List[Dict[str, Any]]:
                     'published': e0.get('published', '')
                 })
         else:
-            entries.extend(_parse_html_river(raw, url))
+            # Try Techmeme River HTML
+            river_items = _parse_html_river(raw, url)
+            if river_items:
+                entries.extend(river_items)
+            else:
+                # Generic HTML: extract headings as fallback
+                soup = BeautifulSoup(raw, 'lxml')
+                headers = soup.find_all(['h1', 'h2', 'h3'])
+                for hdr in headers[:MAX_RETRIES * 5]:
+                    text = hdr.get_text().strip()
+                    if text:
+                        entries.append({
+                            'feed_source': url,
+                            'title': text,
+                            'description': '',
+                            'published': ''
+                        })
     return entries
 
 
