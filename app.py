@@ -7,7 +7,6 @@ import json
 import pytz
 import requests
 from typing import List, Dict, Any
-from functools import lru_cache
 from time import sleep
 import streamlit.components.v1 as components
 import google.generativeai as genai
@@ -15,7 +14,7 @@ import base64
 import tempfile
 from fpdf import FPDF
 
-# NEW IMPORTS for HTML parsing
+# HTML parsing
 from bs4 import BeautifulSoup
 import re
 
@@ -34,39 +33,37 @@ st.set_page_config(
 
 # Title & description
 st.title("📰 RSS Feed Analyzer")
-st.write("Discover insights across multiple RSS feeds and HTML sources using AI-powered analysis")
+st.write("Discover insights across RSS feeds and HTML sources using AI-powered analysis")
 
-# Sidebar – Configuration
+# Sidebar: Configuration
 st.sidebar.header("⚙️ Configuration")
 
 # Prompt editor
 DEFAULT_PROMPT = """
 Review the latest news from {feed_count} sources (RSS or HTML) and produce a clear, recruiter-focused report covering:
 
-1. **Executive Moves:** Promotions, departures, and leadership changes.
-2. **Workforce Updates:** Layoffs, hiring freezes, and major restructuring.
-3. **Industry Trends:** New funding rounds, partnerships, and market shifts.
-4. **Recruitment Opportunities:** Roles and skills in demand with candidate sourcing recommendations.
+1. Executive moves: promotions, departures, leadership changes.
+2. Workforce updates: layoffs, hiring freezes, major restructuring.
+3. Industry trends: funding rounds, partnerships, market shifts.
+4. Recruitment opportunities: in-demand roles & skills with sourcing recommendations.
 
-### Format Requirements
-- **Overview:** A concise summary of the top 3 highlights.
-- **Sections:** Numbered lists matching points 1–4, with each entry including:
-  - **Title** (Headline)
-  - **Source** (Feed name or URL)
-  - **Time** (Timestamp)
-  - **Key Details & Impact** (Brief description and recruiting implications)
-
-Keep the report actionable for AV/robotics talent acquisition."""
+### Format
+- Start with an overview: top highlights.
+- Then sections 1–4 as numbered lists, each entry with:
+  - Title (headline)
+  - Source (feed name or URL)
+  - Time (timestamp)
+  - Key details & recruiting impact
+"""
 st.sidebar.subheader("Analysis Prompt")
 user_prompt = st.sidebar.text_area(
-    "Customize the analysis prompt:",
+    "Customize prompt:",
     value=DEFAULT_PROMPT,
-    height=200,
-    help="Use {feed_count} as placeholder for number of sources."
+    height=200
 )
-if st.sidebar.button("Reset Prompt to Default"):
+if st.sidebar.button("Reset Prompt"):
     user_prompt = DEFAULT_PROMPT
-    st.sidebar.success("Prompt reset to default!")
+    st.sidebar.success("Prompt reset to default")
 
 # Feed URLs input
 st.sidebar.subheader("Feed URLs")
@@ -82,29 +79,58 @@ urls = st.sidebar.text_area(
 )
 rss_feeds = [u.strip() for u in urls.splitlines() if u.strip()]
 
-# Entries to analyze per source
+# Entries per source
 max_entries = st.sidebar.number_input(
-    "Entries per source:",
-    min_value=1,
-    max_value=50,
-    value=10,
-    help="How many items to extract per feed/source"
+    "Entries per source:", 1, 100, 20
 )
 
 # Scheduled Analysis
 st.sidebar.subheader("Scheduled Analysis")
-enable_sched = st.sidebar.checkbox("Enable Scheduled Analysis")
+enable_sched = st.sidebar.checkbox("Enable Scheduled")
 if enable_sched:
     tz = st.sidebar.selectbox("Timezone", pytz.common_timezones, index=pytz.common_timezones.index('US/Pacific'))
-    t1 = st.sidebar.time_input("Morning analysis at", datetime.strptime("08:00", "%H:%M"))
-    t2 = st.sidebar.time_input("Evening analysis at", datetime.strptime("17:00", "%H:%M"))
+    t1 = st.sidebar.time_input("Morning at", datetime.strptime("08:00","%H:%M"))
+    t2 = st.sidebar.time_input("Evening at", datetime.strptime("17:00","%H:%M"))
 
-# Gemini API key
+# Configure Gemini
 if hasattr(st.secrets, "gemini_api_key"):
     genai.configure(api_key=st.secrets.gemini_api_key)
 else:
-            # HTML fallback: scrape full page text
-            try:
+    st.error("Add gemini_api_key to .streamlit/secrets.toml")
+    st.stop()
+
+# ------------------------------------------------
+# Parsing: RSS/Atom or HTML fallback
+# ------------------------------------------------
+@st.cache_data(ttl=CACHE_TTL)
+def parse_feeds(urls: List[str]) -> List[Dict[str, Any]]:
+    entries: List[Dict[str, Any]] = []
+    for url in urls:
+        try:
+            resp = requests.get(url, timeout=10, headers={"User-Agent": "rss-analyzer"})
+            resp.raise_for_status()
+        except Exception as e:
+            st.warning(f"Could not fetch {url}: {e}")
+            continue
+        raw = resp.content
+        # RSS or Atom?
+        if b"<rss" in raw[:512] or b"<feed" in raw[:512]:
+            feed = feedparser.parse(raw)
+            src = feed.feed.get('title', url)
+            for e0 in feed.entries:
+                entries.append({
+                    'feed_source': src,
+                    'title': _clean_text(e0.get('title','')),
+                    'description': _clean_text(e0.get('description','')),
+                    'published': e0.get('published','')
+                })
+        else:
+            # Try river-style
+            river = _parse_html_river(raw, url)
+            if river:
+                entries.extend(river)
+            else:
+                # Fallback: full page text
                 text = BeautifulSoup(raw, 'lxml').get_text(separator=' ')
                 entries.append({
                     'feed_source': url,
@@ -112,33 +138,27 @@ else:
                     'description': text,
                     'published': ''
                 })
-            except Exception as e:
-                st.warning(f"Failed HTML scrape for {url}: {e}")
     return entries
 
 
 def _parse_html_river(html: bytes, url: str) -> List[Dict[str, Any]]:
-    # look for <river> tag or div#river
     soup = BeautifulSoup(html, 'lxml')
-    river = soup.find('river') or soup.find(id='river')
-    if not river:
+    tag = soup.find('river') or soup.find(id='river')
+    if not tag:
         return []
+    text = tag.get_text(separator=' ')
+    # regex: time • author / source: headline
+    pat = re.compile(r"(\d{1,2}:\d{2}\s?[AP]M)\s*•\s*([^/]+)/\s*([^:]+):\s*(.*?)(?=(?:\d{1,2}:\d{2}\s?[AP]M\s*•)|$)", re.DOTALL)
     out: List[Dict[str, Any]] = []
-    # split text by bullet char
-    text = river.get_text(separator='\n')
-    for line in text.split('\n'):
-        if '•' not in line:
-            continue
-        parts = line.split('•', 1)
-        t, rest = parts[0].strip(), parts[1].strip()
-        m = re.match(r"(.+?)\s*/\s*(.+?):\s*(.+)", rest)
-        if not m:
-            continue
-        auth, src, head = m.groups()
+    for m in pat.finditer(text):
+        t = m.group(1)
+        auth = m.group(2).strip()
+        src = m.group(3).strip()
+        head = m.group(4).strip()
         out.append({
-            'feed_source': src.strip(),
-            'title': head.strip(),
-            'description': f"{auth.strip()} – {head.strip()}",
+            'feed_source': src,
+            'title': head,
+            'description': f"{auth} – {head}",
             'published': _normalize_time(t)
         })
     return out
@@ -156,18 +176,18 @@ def _normalize_time(t: str) -> str:
 def _clean_text(txt: str) -> str:
     if not isinstance(txt, str):
         return str(txt)
-    reps = [("\u201c", '"'), ("\u201d", '"'), ("\u2018", "'"), ("\u2019", "'")]
-    for a, b in reps:
-        txt = txt.replace(a, b)
+    for a,b in [("\u201c",'"'),("\u201d",'"'),("\u2018","'"),("\u2019","'")]:
+        txt = txt.replace(a,b)
     return txt
 
-# Summarization classes & functions
+# ------------------------------------------------
+# Summarization
+# ------------------------------------------------
 class APIClient:
     def __init__(self):
         self.model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')
     def get_completion(self, prompt: str) -> str:
-        resp = self.model.generate_content(prompt)
-        return resp.text
+        return self.model.generate_content(prompt).text
 
 
 def generate_summary(content: str, count: int, prompt: str) -> str:
@@ -175,37 +195,24 @@ def generate_summary(content: str, count: int, prompt: str) -> str:
     full = prompt.format(feed_count=count) + "\n\n" + content
     return client.get_completion(full)
 
-# Extract content
+# ------------------------------------------------
+# Content extraction
+# ------------------------------------------------
 @st.cache_data(ttl=CACHE_TTL)
-def extract_content(entries: List[Dict[str, Any]], max_entries: int) -> str:
-    grouped: Dict[str, List[Dict[str, Any]]] = {}
+def extract_content(entries: List[Dict[str, Any]], max_e: int) -> str:
+    grouped: Dict[str,List[Dict[str,Any]]] = {}
     for e in entries:
         grouped.setdefault(e['feed_source'], []).append(e)
     parts: List[str] = []
     for src, items in grouped.items():
         parts.append(f"\nSource: {src}\n" + "-"*40)
-        for it in items[:max_entries]:
+        for it in items[:max_e]:
             parts.append(f"Title: {it['title']}\nDate: {it['published']}\nDesc: {it['description']}\n")
     return "\n".join(parts)
 
-# Analysis history helpers
-def save_analysis_result(summary: str, timestamp: datetime) -> None:
-    os.makedirs('analysis_history', exist_ok=True)
-    fn = f"analysis_history/analysis_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
-    with open(fn, 'w', encoding='utf-8') as f:
-        json.dump({'timestamp': timestamp.isoformat(), 'summary': summary}, f)
-
-def load_analysis_history() -> List[Dict[str, Any]]:
-    if not os.path.exists('analysis_history'):
-        return []
-    res: List[Dict[str, Any]] = []
-    for fn in sorted(os.listdir('analysis_history'), reverse=True):
-        if fn.endswith('.json'):
-            with open(f'analysis_history/{fn}', 'r', encoding='utf-8') as f:
-                res.append(json.load(f))
-    return res
-
-# Main UI and execution
+# ------------------------------------------------
+# Main UI logic
+# ------------------------------------------------
 def main():
     if st.button("Run Cross-Feed Analysis"):
         if not rss_feeds:
@@ -214,14 +221,41 @@ def main():
         st.write(f"Analyzing {len(rss_feeds)} sources...")
         entries = parse_feeds(rss_feeds)
         st.write(f"Parsed {len(entries)} entries.")
-        content = extract_content(entries, max_entries)
-        summary = generate_summary(content, len(rss_feeds), user_prompt)
+        txt = extract_content(entries, max_entries)
+        summary = generate_summary(txt, len(rss_feeds), user_prompt)
         st.subheader("Analysis Result")
         st.write(summary)
         b64 = base64.b64encode(summary.encode()).decode()
         st.markdown(f"<a href='data:text/plain;base64,{b64}' download='analysis.txt'>Download Analysis</a>", unsafe_allow_html=True)
 
-# Scheduler setup
+    # Show previous if any
+    history = load_analysis_history()
+    if history:
+        st.sidebar.subheader("Previous Analyses")
+        for h in history[:5]:
+            st.sidebar.markdown(f"**{h['timestamp']}**: {h['summary'][:100]}...")
+
+# Analysis history helpers
+# Save & load
+from datetime import datetime as _dt
+
+def save_analysis_result(summary: str, timestamp: _dt) -> None:
+    os.makedirs('analysis_history', exist_ok=True)
+    fn = f"analysis_history/analysis_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
+    with open(fn, 'w', encoding='utf-8') as f:
+        json.dump({'timestamp': timestamp.isoformat(), 'summary': summary}, f)
+
+def load_analysis_history() -> List[Dict[str,Any]]:
+    if not os.path.exists('analysis_history'):
+        return []
+    res: List[Dict[str,Any]] = []
+    for fn in sorted(os.listdir('analysis_history'), reverse=True):
+        if fn.endswith('.json'):
+            with open(f'analysis_history/{fn}', 'r', encoding='utf-8') as f:
+                res.append(json.load(f))
+    return res
+
+# Scheduler
 scheduler = BackgroundScheduler(timezone=pytz.UTC)
 if enable_sched:
     scheduler.add_job(lambda: main(), 'cron', hour=t1.hour, minute=t1.minute, timezone=tz)
@@ -232,9 +266,6 @@ else:
     if scheduler.running:
         scheduler.shutdown()
 
-# Run
-def __init__():
-    main()
-
+# Run app
 if __name__ == '__main__':
     main()
