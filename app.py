@@ -151,15 +151,32 @@ def normalize_time(t: str) -> str:
 
 # Summarization
 class APIClient:
-    def __init__(self): self.model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')
+    def __init__(self):
+        # use Gemini Flash 2.5 model for faster throughput
+        self.model = genai.GenerativeModel('models/gemini-2.5-flash-preview-04-17')
     def get_completion(self, prompt: str) -> str:
         return self.model.generate_content(prompt).text
 
 
 def summarize(content: str, count: int) -> str:
-    prompt = user_prompt.format(feed_count=count)
-    full = f"{prompt}\n\n{content}"
-    return APIClient().get_completion(full)
+    # Truncate content if too large
+    max_len = 15000
+    truncated = False
+    if len(content) > max_len:
+        content = content[:max_len]
+        truncated = True
+    prompt_text = user_prompt.format(feed_count=count)
+    full_prompt = f"{prompt_text}\n\n{content}"
+    try:
+        response = APIClient().get_completion(full_prompt)
+    except Exception:
+        fallback = content[:5000]
+        full_prompt = f"{prompt_text}\n\n{fallback}"
+        response = APIClient().get_completion(full_prompt)
+    if truncated:
+        response += "
+[Output truncated]"
+    return response
 
 # Content extraction
 @st.cache_data(ttl=CACHE_TTL)
@@ -190,17 +207,17 @@ def main():
         data = base64.b64encode(result.encode()).decode()
         st.markdown(f"<a href='data:text/plain;base64,{data}' download='analysis.txt'>Download</a>", unsafe_allow_html=True)
 
-# History (optional in sidebar)
+# History (sidebar)
 def load_history():
     path = 'analysis_history'
     if not os.path.exists(path): return []
     files = sorted(os.listdir(path), reverse=True)
-    history = []
+    hist = []
     for fn in files[:5]:
         if fn.endswith('.json'):
             with open(f"{path}/{fn}", 'r') as f:
-                history.append(json.load(f))
-    return history
+                hist.append(json.load(f))
+    return hist
 
 hist = load_history()
 if hist:
