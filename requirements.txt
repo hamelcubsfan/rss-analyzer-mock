@@ -5,3 +5,5 @@ pytz
 apscheduler
 requests
 fpdf
+beautifulsoup4
+lxml
