@@ -174,8 +174,7 @@ def summarize(content: str, count: int) -> str:
         full_prompt = f"{prompt_text}\n\n{fallback}"
         response = APIClient().get_completion(full_prompt)
     if truncated:
-        response += "
-[Output truncated]"
+        response += "\n[Output truncated]"
     return response
 
 # Content extraction
