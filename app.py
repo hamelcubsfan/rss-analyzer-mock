@@ -1,171 +1,147 @@
 import streamlit as st
 import feedparser
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 import json
 import pytz
 import requests
 from typing import List, Dict, Any
-from time import sleep
-import streamlit.components.v1 as components
 import google.generativeai as genai
 import base64
-import tempfile
-from fpdf import FPDF
-
-# HTML parsing
 from bs4 import BeautifulSoup
 import re
 
 # Constants
-CACHE_TTL = 300  # 5 minutes
+CACHE_TTL = 300  # seconds
 MAX_RETRIES = 3
-RETRY_DELAY = 1
 
 # Streamlit setup
 st.set_page_config(
-    page_title="RSS Feed Analyzer",
+    page_title="RSS & HTML Feed Analyzer",
     page_icon="📰",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
 # Title & description
-st.title("📰 RSS Feed Analyzer")
-st.write("Discover insights across RSS feeds and HTML sources using AI-powered analysis")
+st.title("📰 RSS & HTML Feed Analyzer")
+st.write("Aggregate and analyze news from RSS feeds or HTML pages with AI-powered summaries.")
 
-# Sidebar: Configuration
+# Sidebar configuration
 st.sidebar.header("⚙️ Configuration")
 
 # Prompt editor
 DEFAULT_PROMPT = """
-Review the latest news from {feed_count} sources (RSS or HTML) and produce a clear, recruiter-focused report covering:
+Review the latest news from {feed_count} sources and produce a recruiter-focused report covering:
 
-1. Executive moves: promotions, departures, leadership changes.
-2. Workforce updates: layoffs, hiring freezes, major restructuring.
-3. Industry trends: funding rounds, partnerships, market shifts.
-4. Recruitment opportunities: in-demand roles & skills with sourcing recommendations.
+- Executive moves: promotions, departures, leadership changes.
+- Workforce updates: layoffs, hiring freezes, major restructuring.
+- Industry trends: funding rounds, partnerships, market shifts.
+- Recruitment opportunities: in-demand roles & skills with sourcing recommendations.
 
-### Format
-- Start with an overview: top highlights.
-- Then sections 1–4 as numbered lists, each entry with:
-  - Title (headline)
-  - Source (feed name or URL)
-  - Time (timestamp)
-  - Key details & recruiting impact
+### Structure
+1) Overview: key highlights.
+2) Detailed sections matching the bullets above.
+Each entry: Title, Source, Time, Key details & recruiting impact.
 """
-st.sidebar.subheader("Analysis Prompt")
-user_prompt = st.sidebar.text_area(
-    "Customize prompt:",
-    value=DEFAULT_PROMPT,
-    height=200
-)
-if st.sidebar.button("Reset Prompt"):
+user_prompt = st.sidebar.text_area("Analysis prompt:", value=DEFAULT_PROMPT, height=200)
+if st.sidebar.button("Reset prompt to default"):
     user_prompt = DEFAULT_PROMPT
-    st.sidebar.success("Prompt reset to default")
+    st.sidebar.success("Prompt reset")
 
-# Feed URLs input
-st.sidebar.subheader("Feed URLs")
-def default_feeds():
+# URL input
+def default_urls():
     return [
         "https://techcrunch.com/feed/",
         "https://www.techmeme.com/river"
     ]
-urls = st.sidebar.text_area(
-    "Enter one RSS or HTML URL per line:",
-    value="\n".join(default_feeds()),
+urls_text = st.sidebar.text_area(
+    "Enter RSS or HTML URLs (one per line):",
+    value="\n".join(default_urls()),
     height=150
 )
-rss_feeds = [u.strip() for u in urls.splitlines() if u.strip()]
+urls = [u.strip() for u in urls_text.splitlines() if u.strip()]
 
 # Entries per source
-max_entries = st.sidebar.number_input(
-    "Entries per source:", 1, 100, 20
-)
+max_entries = st.sidebar.number_input("Entries per source:", min_value=1, max_value=100, value=20)
 
-# Scheduled Analysis
-st.sidebar.subheader("Scheduled Analysis")
-enable_sched = st.sidebar.checkbox("Enable Scheduled")
+# Scheduling (optional)
+enable_sched = st.sidebar.checkbox("Enable scheduled analysis")
 if enable_sched:
     tz = st.sidebar.selectbox("Timezone", pytz.common_timezones, index=pytz.common_timezones.index('US/Pacific'))
     t1 = st.sidebar.time_input("Morning at", datetime.strptime("08:00","%H:%M"))
     t2 = st.sidebar.time_input("Evening at", datetime.strptime("17:00","%H:%M"))
 
-# Configure Gemini
-if hasattr(st.secrets, "gemini_api_key"):
+# Configure Gemini API key
+if hasattr(st.secrets, 'gemini_api_key'):
     genai.configure(api_key=st.secrets.gemini_api_key)
 else:
-    st.error("Add gemini_api_key to .streamlit/secrets.toml")
+    st.error("Please set gemini_api_key in .streamlit/secrets.toml")
     st.stop()
 
-# ------------------------------------------------
-# Parsing: RSS/Atom or HTML fallback
-# ------------------------------------------------
+# Parsing logic
 @st.cache_data(ttl=CACHE_TTL)
 def parse_feeds(urls: List[str]) -> List[Dict[str, Any]]:
-    entries: List[Dict[str, Any]] = []
+    results: List[Dict[str, Any]] = []
     for url in urls:
         try:
-            resp = requests.get(url, timeout=10, headers={"User-Agent": "rss-analyzer"})
+            resp = requests.get(url, timeout=10, headers={'User-Agent':'feed-analyzer'})
             resp.raise_for_status()
+            raw = resp.content
         except Exception as e:
-            st.warning(f"Could not fetch {url}: {e}")
+            st.warning(f"Failed to fetch {url}: {e}")
             continue
-        raw = resp.content
-        # RSS or Atom?
-        if b"<rss" in raw[:512] or b"<feed" in raw[:512]:
+        # RSS/Atom detection
+        if b'<rss' in raw[:512] or b'<feed' in raw[:512]:
             feed = feedparser.parse(raw)
-            src = feed.feed.get('title', url)
-            for e0 in feed.entries:
-                entries.append({
-                    'feed_source': src,
-                    'title': _clean_text(e0.get('title','')),
-                    'description': _clean_text(e0.get('description','')),
-                    'published': e0.get('published','')
+            source = feed.feed.get('title', url)
+            for entry in feed.entries:
+                results.append({
+                    'feed_source': source,
+                    'title': entry.get('title','').strip(),
+                    'description': entry.get('description','').strip(),
+                    'published': entry.get('published','').strip()
                 })
         else:
-            # Try river-style parser
-            river = _parse_html_river(raw, url)
-            if river:
-                entries.extend(river)
+            # HTML: try river parser
+            items = parse_html_river(raw)
+            if items:
+                results.extend(items)
             else:
-                # Fallback: full page text
+                # Fallback: full text as one item
                 text = BeautifulSoup(raw, 'lxml').get_text(separator=' ')
-                entries.append({
+                results.append({
                     'feed_source': url,
                     'title': url,
                     'description': text,
                     'published': ''
                 })
-    return entries
+    return results
 
 
-def _parse_html_river(html: bytes, url: str) -> List[Dict[str, Any]]:
+def parse_html_river(html: bytes) -> List[Dict[str, Any]]:
     soup = BeautifulSoup(html, 'lxml')
-    tag = soup.find('river') or soup.find(id='river')
-    if not tag:
+    container = soup.find('river') or soup.find(id='river')
+    if not container:
         return []
-    # ensure each bullet on its own line
-    text = tag.get_text(separator='\n')
-    lines = [line.strip() for line in text.split('\n') if line.strip()]
-    pat = re.compile(r"(\d{1,2}:\d{2}\s?[AP]M)\s*•\s*([^/]+)/\s*([^:]+):\s*(.*)")
-    out: List[Dict[str, Any]] = []
-    for line in lines:
-        m = pat.match(line)
-        if not m:
-            continue
-        t, auth, src, head = m.groups()
+    text = container.get_text(separator='\n')
+    lines = [ln.strip() for ln in text.split('\n') if ln.strip()]
+    pattern = re.compile(r"(\d{1,2}:\d{2}\s?[AP]M)\s*•\s*([^/]+)/\s*([^:]+):\s*(.*)")
+    out = []
+    for ln in lines:
+        m = pattern.match(ln)
+        if not m: continue
+        tm, author, src, headline = m.groups()
         out.append({
             'feed_source': src.strip(),
-            'title': head.strip(),
-            'description': f"{auth.strip()} – {head.strip()}",
-            'published': _normalize_time(t)
+            'title': headline.strip(),
+            'description': f"{author.strip()} – {headline.strip()}",
+            'published': normalize_time(tm)
         })
     return out
 
 
-def _normalize_time(t: str) -> str:
+def normalize_time(t: str) -> str:
     try:
         today = datetime.now().strftime('%Y-%m-%d')
         dt = datetime.strptime(f"{today} {t}", "%Y-%m-%d %I:%M %p")
@@ -173,97 +149,74 @@ def _normalize_time(t: str) -> str:
     except:
         return t
 
-
-def _clean_text(txt: str) -> str:
-    if not isinstance(txt, str):
-        return str(txt)
-    for a,b in [("\u201c",'"'),("\u201d",'"'),("\u2018","'"),("\u2019","'")]:
-        txt = txt.replace(a,b)
-    return txt
-
-# ------------------------------------------------
 # Summarization
-# ------------------------------------------------
 class APIClient:
-    def __init__(self):
-        self.model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')
+    def __init__(self): self.model = genai.GenerativeModel('gemini-2.5-pro-exp-03-25')
     def get_completion(self, prompt: str) -> str:
         return self.model.generate_content(prompt).text
 
 
-def generate_summary(content: str, count: int, prompt: str) -> str:
-    client = APIClient()
-    full = prompt.format(feed_count=count) + "\n\n" + content
-    return client.get_completion(full)
+def summarize(content: str, count: int) -> str:
+    prompt = user_prompt.format(feed_count=count)
+    full = f"{prompt}\n\n{content}"
+    return APIClient().get_completion(full)
 
-# ------------------------------------------------
 # Content extraction
-# ------------------------------------------------
 @st.cache_data(ttl=CACHE_TTL)
 def extract_content(entries: List[Dict[str, Any]], max_e: int) -> str:
-    grouped: Dict[str,List[Dict[str,Any]]] = {}
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
     for e in entries:
         grouped.setdefault(e['feed_source'], []).append(e)
-    parts: List[str] = []
+    parts = []
     for src, items in grouped.items():
-        parts.append(f"\nSource: {src}\n" + "-"*40)
+        parts.append(f"\nSource: {src}\n" + '-'*40)
         for it in items[:max_e]:
             parts.append(f"Title: {it['title']}\nDate: {it['published']}\nDesc: {it['description']}\n")
-    return "\n".join(parts)
+    return '\n'.join(parts)
 
-# ------------------------------------------------
-# Main UI logic
-# ------------------------------------------------
+# Main UI
 def main():
-    if st.button("Run Cross-Feed Analysis"):
-        if not rss_feeds:
-            st.error("Enter at least one URL.")
+    if st.button('Run Cross-Feed Analysis'):
+        if not urls:
+            st.error('Add at least one URL')
             return
-        st.write(f"Analyzing {len(rss_feeds)} sources...")
-        entries = parse_feeds(rss_feeds)
+        st.write(f"Analyzing {len(urls)} sources...")
+        entries = parse_feeds(urls)
         st.write(f"Parsed {len(entries)} entries.")
-        txt = extract_content(entries, max_entries)
-        summary = generate_summary(txt, len(rss_feeds), user_prompt)
-        st.subheader("Analysis Result")
-        st.write(summary)
-        b64 = base64.b64encode(summary.encode()).decode()
-        st.markdown(f"<a href='data:text/plain;base64,{b64}' download='analysis.txt'>Download Analysis</a>", unsafe_allow_html=True)
-    history = load_analysis_history()
-    if history:
-        st.sidebar.subheader("Previous Analyses")
-        for h in history[:5]:
-            st.sidebar.markdown(f"**{h['timestamp']}**: {h['summary'][:100]}...")
+        content = extract_content(entries, max_entries)
+        result = summarize(content, len(urls))
+        st.subheader('Analysis')
+        st.write(result)
+        data = base64.b64encode(result.encode()).decode()
+        st.markdown(f"<a href='data:text/plain;base64,{data}' download='analysis.txt'>Download</a>", unsafe_allow_html=True)
 
-# Analysis history helpers
-from datetime import datetime as _dt
-
-def save_analysis_result(summary: str, timestamp: _dt) -> None:
-    os.makedirs('analysis_history', exist_ok=True)
-    fn = f"analysis_history/analysis_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
-    with open(fn, 'w', encoding='utf-8') as f:
-        json.dump({'timestamp': timestamp.isoformat(), 'summary': summary}, f)
-
-def load_analysis_history() -> List[Dict[str,Any]]:
-    if not os.path.exists('analysis_history'):
-        return []
-    res: List[Dict[str,Any]] = []
-    for fn in sorted(os.listdir('analysis_history'), reverse=True):
+# History (optional in sidebar)
+def load_history():
+    path = 'analysis_history'
+    if not os.path.exists(path): return []
+    files = sorted(os.listdir(path), reverse=True)
+    history = []
+    for fn in files[:5]:
         if fn.endswith('.json'):
-            with open(f'analysis_history/{fn}', 'r', encoding='utf-8') as f:
-                res.append(json.load(f))
-    return res
+            with open(f"{path}/{fn}", 'r') as f:
+                history.append(json.load(f))
+    return history
+
+hist = load_history()
+if hist:
+    st.sidebar.subheader('History')
+    for h in hist:
+        st.sidebar.markdown(f"**{h['timestamp']}**: {h['summary'][:80]}...")
 
 # Scheduler
 scheduler = BackgroundScheduler(timezone=pytz.UTC)
 if enable_sched:
-    scheduler.add_job(lambda: main(), 'cron', hour=t1.hour, minute=t1.minute, timezone=tz)
-    scheduler.add_job(lambda: main(), 'cron', hour=t2.hour, minute=t2.minute, timezone=tz)
-    if not scheduler.running:
-        scheduler.start()
+    scheduler.add_job(main, 'cron', hour=t1.hour, minute=t1.minute, timezone=tz)
+    scheduler.add_job(main, 'cron', hour=t2.hour, minute=t2.minute, timezone=tz)
+    if not scheduler.running: scheduler.start()
 else:
-    if scheduler.running:
-        scheduler.shutdown()
+    if scheduler.running: scheduler.shutdown()
 
-# Run app
+# Run
 if __name__ == '__main__':
     main()
