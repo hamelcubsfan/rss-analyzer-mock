@@ -32,17 +32,43 @@ st.sidebar.header("⚙️ Configuration")
 
 # Prompt editor
 DEFAULT_PROMPT = """
-Review the latest news from {feed_count} sources and produce a recruiter-focused report covering:
+Review the latest news from {feed_count} sources and produce a recruiter-focused report with a consistent structure, capturing all high-impact disruptions, movements, or must-know stories published today (or within the last hour if available). The report should educate the team on critical industry developments, market updates, employment changes, and recruitment opportunities. Cross-reference stories across sources to highlight connections and trends. Focus on:
 
 - Executive moves: promotions, departures, leadership changes.
-- Workforce updates: layoffs, hiring freezes, major restructuring.
-- Industry trends: funding rounds, partnerships, market shifts.
-- Recruitment opportunities: in-demand roles & skills with sourcing recommendations.
+- Employment updates: layoffs, hiring freezes, major restructuring, or expansions.
+- Major industry news: significant market shifts, technological breakthroughs, regulatory changes, funding rounds, or partnerships.
+- Recruitment opportunities: in-demand roles, skills, and sourcing recommendations.
 
-### Structure
-1) Overview: key highlights.
-2) Detailed sections matching the bullets above.
-Each entry: Title, Source, Time, Key details & recruiting impact.
+### Instructions
+- Identify and prioritize stories with significant industry or recruiting impact (e.g., large-scale layoffs, major funding, C-suite changes, disruptive innovations).
+- Cross-reference related stories across sources to provide a cohesive narrative (e.g., link a company's layoff announcement to its funding news or market shift).
+- For each entry, extract actionable recruiting insights where applicable (e.g., skills in demand, talent pools to target) and highlight broader implications for team awareness.
+- Ensure no duplicate stories; merge details from multiple sources into a single entry if they cover the same event.
+- Include all relevant, high-impact stories published today, prioritizing those from the last hour if timestamps allow.
+- If a section has many stories, prioritize the most impactful but include all that meet the "must-know" threshold for team education (e.g., major disruptions, opportunities, or market updates).
+
+### Output Structure
+1) **Overview**: 3-5 bullet points summarizing key highlights, prioritizing high-impact disruptions, market updates, or trends across sources to inform the team.
+2) **Executive Moves**:
+   - *Title*: Brief headline (e.g., "CTO Departs TechCorp").
+   - *Source(s)*: List all sources reporting the story.
+   - *Time*: Publication date/time (include hour if available).
+   - *Key Details*: Summary of the move and its context.
+   - *Team Impact*: Implications for recruiting or industry awareness (e.g., opportunities to recruit from affected teams).
+3) **Employment Updates**:
+   - Same structure as above, covering layoffs, hiring freezes, restructuring, or expansions.
+4) **Major Industry News**:
+   - Same structure, covering market shifts, technological breakthroughs, regulatory changes, funding rounds, or partnerships.
+5) **Recruitment Opportunities**:
+   - *Title*: Role or skill area (e.g., "AI Engineers in Demand").
+   - *Source(s)*: Sources indicating demand.
+   - *Key Details*: Why the role/skill is trending, industries affected.
+   - *Sourcing Recommendations*: Specific strategies (e.g., target LinkedIn groups, universities, or competitors).
+
+### Constraints
+- Include all high-impact, must-know stories per section from today, typically aiming for 2-5 entries but allowing more if necessary to cover critical updates for team education.
+- Use clear, concise language (50-100 words per entry).
+- If no relevant stories exist for a section, state "No significant updates today" and explain briefly.
 """
 user_prompt = st.sidebar.text_area("Analysis prompt:", value=DEFAULT_PROMPT, height=200)
 if st.sidebar.button("Reset prompt to default"):
