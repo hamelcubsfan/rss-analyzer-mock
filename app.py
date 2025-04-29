@@ -52,7 +52,7 @@ if st.sidebar.button("Reset prompt to default"):
 # URL input
 urls_text = st.sidebar.text_area(
     "Enter RSS or HTML URLs (one per line):",
-    value="https://techcrunch.com/feed/\nhttps://www.techmeme.com/river",
+    value="https://techcrunch.com/feed/\nhttps://www.techmeme.com/river\nhttps://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=19854910\nhttps://www.theverge.com/rss/index.xml\nhttps://gizmodo.com/feed",
     height=150
 )
 urls = [u.strip() for u in urls_text.splitlines() if u.strip()]
